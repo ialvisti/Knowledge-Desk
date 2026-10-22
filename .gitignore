@@ -1,0 +1,18 @@
+# Dependencias y artefactos de la UI
+node_modules/
+dist/
+dist-ssr/
+test-results/
+playwright-report/
+*.log
+
+# Secretos: solo se versiona la plantilla
+.env
+.env.*
+!.env.example
+
+# Bloqueos temporales de Office y archivos del sistema
+~$*
+.DS_Store
+Thumbs.db
+desktop.ini
