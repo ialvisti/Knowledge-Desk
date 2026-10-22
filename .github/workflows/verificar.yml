@@ -1,0 +1,65 @@
+# Verificación continua de Knowledge Desk. No usa secretos ni servicios reales:
+# las pruebas de integración corren contra los simuladores locales de ForUsGuide
+# y Pinecone (knowledge-desk-server/test/support).
+name: Verificación
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verificacion-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            knowledge-desk-server/package-lock.json
+            knowledge-desk-ui/package-lock.json
+
+      - name: Instalar dependencias del servidor
+        run: npm ci
+        working-directory: knowledge-desk-server
+
+      - name: Instalar dependencias de la interfaz
+        run: npm ci
+        working-directory: knowledge-desk-ui
+
+      - name: Instalar Chromium de Playwright
+        run: npx playwright install --with-deps chromium
+        working-directory: knowledge-desk-ui
+
+      # Servidor: typecheck, lint y pruebas. Interfaz: build, lint y Playwright
+      # (escritorio, móvil y E2E con el stack simulado).
+      - name: npm run verificar
+        run: npm run verificar
+
+      - name: Auditoría de dependencias del servidor
+        run: npm audit --audit-level=moderate
+        working-directory: knowledge-desk-server
+
+      - name: Auditoría de dependencias de la interfaz
+        run: npm audit --audit-level=moderate
+        working-directory: knowledge-desk-ui
+
+      - name: Conservar resultados de Playwright si algo falló
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: knowledge-desk-ui/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
