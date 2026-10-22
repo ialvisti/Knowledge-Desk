@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<title>Knowledge Desk · capturas frente a referencias</title>
+<style>body{font:14px/1.4 system-ui;margin:24px;color:#1f2937}table{border-collapse:collapse;width:100%}td{vertical-align:top;border-top:1px solid #ddd;padding:12px}img,object{max-width:560px;border:1px solid #ccc}span{color:#555}</style>
+<h1>Capturas finales (modo simulado) frente a las referencias</h1>
+<p>Servidor real de Knowledge Desk con índice y servicio de consulta simulados en este equipo. Conteos, fechas e IDs son los reales del pipeline; no se copian de las referencias. Las referencias de Consulta y Resultados son PDF: se incrustan si el navegador tiene visor de PDF y siempre tienen enlace.</p>
+<table><thead><tr><th>Captura</th><th>Knowledge Desk</th><th>Referencia</th></tr></thead><tbody>
+<tr><td><strong>01-consulta.png</strong><br><span>Pantalla inicial con ejemplos verificados contra el corpus y el aviso de modo demostración.</span></td>
+<td><a href="01-consulta.png"><img src="01-consulta.png" alt="01-consulta.png"></a></td>
+<td><object data="../negocio/IMAGENES/Consulta%20%E2%80%94%20Knowledge%20Desk.pdf" type="application/pdf" width="560" height="720" aria-label="Consulta — Knowledge Desk.pdf"><a href="../negocio/IMAGENES/Consulta%20%E2%80%94%20Knowledge%20Desk.pdf">Abrir Consulta — Knowledge Desk.pdf</a></object><br><a href="../negocio/IMAGENES/Consulta%20%E2%80%94%20Knowledge%20Desk.pdf">Consulta — Knowledge Desk.pdf (PDF)</a></td></tr>
+<tr><td><strong>02-resultados.png</strong><br><span>Respuesta sustentada: cobertura, puntos clave y fuentes con su ruta JSON.</span></td>
+<td><a href="02-resultados.png"><img src="02-resultados.png" alt="02-resultados.png"></a></td>
+<td><object data="../negocio/IMAGENES/Resultados%20%E2%80%94%20Knowledge%20Desk.pdf" type="application/pdf" width="560" height="720" aria-label="Resultados — Knowledge Desk.pdf"><a href="../negocio/IMAGENES/Resultados%20%E2%80%94%20Knowledge%20Desk.pdf">Abrir Resultados — Knowledge Desk.pdf</a></object><br><a href="../negocio/IMAGENES/Resultados%20%E2%80%94%20Knowledge%20Desk.pdf">Resultados — Knowledge Desk.pdf (PDF)</a></td></tr>
+<tr><td><strong>03-insuficiencia-cobertura-baja.png</strong><br><span>Cobertura baja real: no se genera respuesta.</span></td>
+<td><a href="03-insuficiencia-cobertura-baja.png"><img src="03-insuficiencia-cobertura-baja.png" alt="03-insuficiencia-cobertura-baja.png"></a></td>
+<td><a href="../negocio/IMAGENES/Mensaje%20de%20error%20en%20pregunta.png"><img src="../negocio/IMAGENES/Mensaje%20de%20error%20en%20pregunta.png" alt="Mensaje de error en pregunta.png"></a><br><span>Mensaje de error en pregunta.png</span></td></tr>
+<tr><td><strong>04-sin-evidencia.png</strong><br><span>Sin evidencia: sin documentos que ver ni referencias inventadas.</span></td>
+<td><a href="04-sin-evidencia.png"><img src="04-sin-evidencia.png" alt="04-sin-evidencia.png"></a></td>
+<td><a href="../negocio/IMAGENES/Mensaje%20de%20error%20en%20pregunta.png"><img src="../negocio/IMAGENES/Mensaje%20de%20error%20en%20pregunta.png" alt="Mensaje de error en pregunta.png"></a><br><span>Mensaje de error en pregunta.png</span></td></tr>
+<tr><td><strong>05-error-validacion.png</strong><br><span>Validación real del servidor (422) con ID de soporte y contrato JSON.</span></td>
+<td><a href="05-error-validacion.png"><img src="05-error-validacion.png" alt="05-error-validacion.png"></a></td>
+<td><a href="../negocio/IMAGENES/Consumir%20los%20servicios%20de%20consulta%202.png"><img src="../negocio/IMAGENES/Consumir%20los%20servicios%20de%20consulta%202.png" alt="Consumir los servicios de consulta 2.png"></a><br><span>Consumir los servicios de consulta 2.png</span></td></tr>
+<tr><td><strong>06-error-recuperacion.png</strong><br><span>Fallo &#34;retrieval&#34; inyectado en el servicio de consulta simulado.</span></td>
+<td><a href="06-error-recuperacion.png"><img src="06-error-recuperacion.png" alt="06-error-recuperacion.png"></a></td>
+<td><a href="../negocio/IMAGENES/Consumir%20los%20servicios%20de%20consulta%203.png"><img src="../negocio/IMAGENES/Consumir%20los%20servicios%20de%20consulta%203.png" alt="Consumir los servicios de consulta 3.png"></a><br><span>Consumir los servicios de consulta 3.png</span></td></tr>
+<tr><td><strong>07-error-base-vectorial.png</strong><br><span>Fallo &#34;vector&#34; inyectado en el servicio de consulta simulado.</span></td>
+<td><a href="07-error-base-vectorial.png"><img src="07-error-base-vectorial.png" alt="07-error-base-vectorial.png"></a></td>
+<td><a href="../negocio/IMAGENES/Consumir%20los%20servicios%20de%20consulta%204.png"><img src="../negocio/IMAGENES/Consumir%20los%20servicios%20de%20consulta%204.png" alt="Consumir los servicios de consulta 4.png"></a><br><span>Consumir los servicios de consulta 4.png</span></td></tr>
+<tr><td><strong>08-error-proveedor.png</strong><br><span>Fallo &#34;proveedor&#34; inyectado en el servicio de consulta simulado.</span></td>
+<td><a href="08-error-proveedor.png"><img src="08-error-proveedor.png" alt="08-error-proveedor.png"></a></td>
+<td><a href="../negocio/IMAGENES/Consumir%20los%20servicios%20de%20consulta%205.png"><img src="../negocio/IMAGENES/Consumir%20los%20servicios%20de%20consulta%205.png" alt="Consumir los servicios de consulta 5.png"></a><br><span>Consumir los servicios de consulta 5.png</span></td></tr>
+<tr><td><strong>09-error-tiempo-agotado.png</strong><br><span>Tiempo máximo del servidor (30 s) agotado: TIMEOUT sin respuesta parcial.</span></td>
+<td><a href="09-error-tiempo-agotado.png"><img src="09-error-tiempo-agotado.png" alt="09-error-tiempo-agotado.png"></a></td>
+<td><span>Sin referencia: pantalla ampliada</span></td></tr>
+<tr><td><strong>10-documentos.png</strong><br><span>Lista real: Indexado, Procesando (reintento esperando al índice) y Error (sin contenido indexable).</span></td>
+<td><a href="10-documentos.png"><img src="10-documentos.png" alt="10-documentos.png"></a></td>
+<td><a href="../negocio/IMAGENES/Vista%20de%20documentos.png"><img src="../negocio/IMAGENES/Vista%20de%20documentos.png" alt="Vista de documentos.png"></a><br><span>Vista de documentos.png</span></td></tr>
+<tr><td><strong>11-documentos-motivo-error.png</strong><br><span>Motivo real del Error de Borrador_Incompleto.json: sin contenido indexable.</span></td>
+<td><a href="11-documentos-motivo-error.png"><img src="11-documentos-motivo-error.png" alt="11-documentos-motivo-error.png"></a></td>
+<td><span>Sin referencia: pantalla ampliada</span></td></tr>
+<tr><td><strong>12-reemplazo-dialogo.png</strong><br><span>Diálogo de reemplazo con el título canónico del artículo y su versión activa.</span></td>
+<td><a href="12-reemplazo-dialogo.png"><img src="12-reemplazo-dialogo.png" alt="12-reemplazo-dialogo.png"></a></td>
+<td><a href="../negocio/IMAGENES/Vista%20de%20edicion%20de%20documento.png"><img src="../negocio/IMAGENES/Vista%20de%20edicion%20de%20documento.png" alt="Vista de edicion de documento.png"></a><br><span>Vista de edicion de documento.png</span></td></tr>
+<tr><td><strong>13-reemplazo-exito.png</strong><br><span>Reemplazo verificado: la nueva versión ya está activa.</span></td>
+<td><a href="13-reemplazo-exito.png"><img src="13-reemplazo-exito.png" alt="13-reemplazo-exito.png"></a></td>
+<td><a href="../negocio/IMAGENES/Mensaje%20de%20exito%20de%20reemplazo%20de%20documento.png"><img src="../negocio/IMAGENES/Mensaje%20de%20exito%20de%20reemplazo%20de%20documento.png" alt="Mensaje de exito de reemplazo de documento.png"></a><br><span>Mensaje de exito de reemplazo de documento.png</span></td></tr>
+<tr><td><strong>14-reemplazo-error.png</strong><br><span>Fallo real de indexación: se conserva la versión vigente y no se publica la nueva.</span></td>
+<td><a href="14-reemplazo-error.png"><img src="14-reemplazo-error.png" alt="14-reemplazo-error.png"></a></td>
+<td><a href="../negocio/IMAGENES/error%20ar%20reemplazar%20archivo.png"><img src="../negocio/IMAGENES/error%20ar%20reemplazar%20archivo.png" alt="error ar reemplazar archivo.png"></a><br><span>error ar reemplazar archivo.png</span></td></tr>
+<tr><td><strong>15-eliminar-dialogo.png</strong><br><span>Confirmación explícita antes de eliminar.</span></td>
+<td><a href="15-eliminar-dialogo.png"><img src="15-eliminar-dialogo.png" alt="15-eliminar-dialogo.png"></a></td>
+<td><a href="../negocio/IMAGENES/Eliminar%20documento.png"><img src="../negocio/IMAGENES/Eliminar%20documento.png" alt="Eliminar documento.png"></a><br><span>Eliminar documento.png</span></td></tr>
+<tr><td><strong>16-eliminacion-incompleta.png</strong><br><span>El índice conservó 1 embedding: no se informa éxito y el documento queda bloqueado.</span></td>
+<td><a href="16-eliminacion-incompleta.png"><img src="16-eliminacion-incompleta.png" alt="16-eliminacion-incompleta.png"></a></td>
+<td><a href="../negocio/IMAGENES/Eliminacion%20incompleta.png"><img src="../negocio/IMAGENES/Eliminacion%20incompleta.png" alt="Eliminacion incompleta.png"></a><br><span>Eliminacion incompleta.png</span></td></tr>
+<tr><td><strong>17-eliminado-exito.png</strong><br><span>Reintento completo: fragmentos, embeddings y registro retirados.</span></td>
+<td><a href="17-eliminado-exito.png"><img src="17-eliminado-exito.png" alt="17-eliminado-exito.png"></a></td>
+<td><a href="../negocio/IMAGENES/Exito%20eliminado.png"><img src="../negocio/IMAGENES/Exito%20eliminado.png" alt="Exito eliminado.png"></a><br><span>Exito eliminado.png</span></td></tr>
+<tr><td><strong>18-visor-json.png</strong><br><span>JSON original de la versión usada: formateado, rutas resaltadas y SHA-256 verificado en el navegador.</span></td>
+<td><a href="18-visor-json.png"><img src="18-visor-json.png" alt="18-visor-json.png"></a></td>
+<td><span>Sin referencia: pantalla ampliada</span></td></tr>
+<tr><td><strong>19-visor-json-completo.png</strong><br><span>La misma vista completa: JSON, fragmentos indexados con sus rutas y registro técnico.</span></td>
+<td><a href="19-visor-json-completo.png"><img src="19-visor-json-completo.png" alt="19-visor-json-completo.png"></a></td>
+<td><span>Sin referencia: pantalla ampliada</span></td></tr>
+<tr><td><strong>20-fuente-externa.png</strong><br><span>Artículo de ForUsGuide: se muestran sus fragmentos indexados y se avisa que no es el JSON original.</span></td>
+<td><a href="20-fuente-externa.png"><img src="20-fuente-externa.png" alt="20-fuente-externa.png"></a></td>
+<td><span>Sin referencia: pantalla ampliada</span></td></tr>
+<tr><td><strong>21-movil-consulta.png</strong><br><span>Consulta en móvil.</span></td>
+<td><a href="21-movil-consulta.png"><img src="21-movil-consulta.png" alt="21-movil-consulta.png"></a></td>
+<td><span>Sin referencia: pantalla ampliada</span></td></tr>
+<tr><td><strong>22-movil-resultados.png</strong><br><span>Resultados en móvil.</span></td>
+<td><a href="22-movil-resultados.png"><img src="22-movil-resultados.png" alt="22-movil-resultados.png"></a></td>
+<td><span>Sin referencia: pantalla ampliada</span></td></tr>
+<tr><td><strong>23-movil-documentos.png</strong><br><span>Documentos en móvil: cada artículo como tarjeta.</span></td>
+<td><a href="23-movil-documentos.png"><img src="23-movil-documentos.png" alt="23-movil-documentos.png"></a></td>
+<td><span>Sin referencia: pantalla ampliada</span></td></tr>
+</tbody></table>
+</html>

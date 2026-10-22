@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { PUERTOS } from '../../playwright.config'
+import { datosDe, generarComparacion } from './comparacion'
 
 // Capturas finales de verificación visual, a los tamaños de las referencias de
 // docs/negocio/IMAGENES. Se toman contra el servidor REAL en modo simulado: los
@@ -19,13 +20,13 @@ const DEMO = path.join(RAIZ, 'demo', 'documentos')
 const KD = `http://127.0.0.1:${PUERTOS.servidor}`
 const PREGUNTA = '¿Cuál es el procedimiento para reembolso de viáticos internacionales?'
 const resultados = (pregunta: string) => `/resultados?${new URLSearchParams({ q: pregunta })}`
-const tomadas: { archivo: string; referencia: string | null; nota: string }[] = []
 
-async function captura(objetivo: Page | Locator, archivo: string, referencia: string | null, nota: string, completa = false) {
+// La referencia y la nota de cada archivo viven en el catálogo de comparacion.ts.
+async function captura(objetivo: Page | Locator, archivo: string, completa = false) {
+  datosDe(archivo)
   const opciones = { path: path.join(SALIDA, archivo), animations: 'disabled' as const }
   if ('goto' in objetivo) await objetivo.screenshot({ ...opciones, fullPage: completa })
   else await objetivo.screenshot(opciones)
-  tomadas.push({ archivo, referencia, nota })
 }
 
 async function control(servicio: 'pinecone' | 'forusguide', datos: Record<string, unknown>) {
@@ -85,16 +86,7 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(() => {
-  const filas = tomadas.map(item => `<tr><td><strong>${item.archivo}</strong><br><span>${item.nota}</span></td>
-<td><a href="${item.archivo}"><img src="${item.archivo}" alt="${item.archivo}"></a></td>
-<td>${item.referencia ? `<a href="../negocio/IMAGENES/${encodeURI(item.referencia)}"><img src="../negocio/IMAGENES/${encodeURI(item.referencia)}" alt="${item.referencia}"></a><br><span>${item.referencia}</span>` : '<span>Sin referencia: pantalla ampliada</span>'}</td></tr>`).join('\n')
-  writeFileSync(path.join(SALIDA, 'comparacion.html'), `<!doctype html><html lang="es"><meta charset="utf-8"><title>Knowledge Desk · capturas frente a referencias</title>
-<style>body{font:14px/1.4 system-ui;margin:24px;color:#1f2937}table{border-collapse:collapse;width:100%}td{vertical-align:top;border-top:1px solid #ddd;padding:12px}img{max-width:560px;border:1px solid #ccc}span{color:#555}</style>
-<h1>Capturas finales (modo simulado) frente a las referencias</h1>
-<p>Servidor real de Knowledge Desk con índice y servicio de consulta simulados en este equipo. Conteos, fechas e IDs son los reales del pipeline; no se copian de las referencias.</p>
-<table><thead><tr><th>Captura</th><th>Knowledge Desk</th><th>Referencia</th></tr></thead><tbody>
-${filas}
-</tbody></table></html>\n`, 'utf8')
+  generarComparacion(SALIDA)
 })
 
 test('Documentos con estados reales (HU07)', async ({ page }) => {
@@ -119,7 +111,7 @@ test('Documentos con estados reales (HU07)', async ({ page }) => {
   const filas = await Promise.all([0, 1, 2, 3, 4].map(indice => caja(page.locator('tbody tr').nth(indice))))
   const geometria = { panelTop: Math.round(panel.y), zonaTop: Math.round(zona.y), zonaBottom: Math.round(zona.y + zona.height), filas: filas.map(fila => Math.round(fila!.height)), quintaBottom: Math.round(filas[4]!.y + filas[4]!.height) }
   writeFileSync(path.join(SALIDA, 'geometria-documentos.json'), `${JSON.stringify({ referencia: { panelTop: 208, zonaTop: 208, zonaBottom: 584, fila: 70, alto: 692 }, medido: geometria }, null, 2)}\n`)
-  await captura(page, '10-documentos.png', 'Vista de documentos.png', 'Lista real: Indexado, Procesando (reintento esperando al índice) y Error (sin contenido indexable).')
+  await captura(page, '10-documentos.png')
   expect(Math.abs(geometria.panelTop - 208)).toBeLessThanOrEqual(4)
   expect(Math.abs(geometria.zonaBottom - 584)).toBeLessThanOrEqual(6)
   for (const alto of geometria.filas) expect(Math.abs(alto - 70)).toBeLessThanOrEqual(2)
@@ -129,7 +121,7 @@ test('Documentos con estados reales (HU07)', async ({ page }) => {
   await vista(page, 1280, 900)
   await page.goto('/documentos')
   await page.locator('tbody tr').nth(4).getByRole('button', { name: 'Ver motivo del error' }).click()
-  await captura(page.locator('.document-list-section'), '11-documentos-motivo-error.png', null, 'Motivo real del Error de Borrador_Incompleto.json: sin contenido indexable.')
+  await captura(page.locator('.document-list-section'), '11-documentos-motivo-error.png')
 
   // El artículo de viáticos sustenta las capturas de consulta, reemplazo y visor.
   await esperar(await subir('Politica_Viaticos_v3.2.json'), ['indexado'])
@@ -140,11 +132,11 @@ test('Consulta y Resultados (PDF de referencia)', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.suggestion-chip').first()).toBeVisible()
   await sinCursor(page)
-  await captura(page, '01-consulta.png', 'Consulta — Knowledge Desk.pdf', 'Pantalla inicial con ejemplos verificados contra el corpus y el aviso de modo demostración.', true)
+  await captura(page, '01-consulta.png', true)
 
   await page.goto(resultados(PREGUNTA))
   await expect(page.getByRole('region', { name: 'Respuesta' })).toBeVisible({ timeout: 30_000 })
-  await captura(page, '02-resultados.png', 'Resultados — Knowledge Desk.pdf', 'Respuesta sustentada: cobertura, puntos clave y fuentes con su ruta JSON.', true)
+  await captura(page, '02-resultados.png', true)
 })
 
 test('Insuficiencia documental y sin evidencia (HU05)', async ({ page }) => {
@@ -152,10 +144,10 @@ test('Insuficiencia documental y sin evidencia (HU05)', async ({ page }) => {
   await page.goto(resultados('¿Cómo se legalizan los gastos de un viaje nacional?'))
   await expect(page.locator('.insufficient-card')).toBeVisible({ timeout: 30_000 })
   await sinCursor(page)
-  await captura(page, '03-insuficiencia-cobertura-baja.png', 'Mensaje de error en pregunta.png', 'Cobertura baja real: no se genera respuesta.')
+  await captura(page, '03-insuficiencia-cobertura-baja.png')
   await page.goto(resultados('¿Cuántas semanas de licencia parental corresponden?'))
   await expect(page.locator('.insufficient-card').getByText('Sin evidencia')).toBeVisible({ timeout: 30_000 })
-  await captura(page, '04-sin-evidencia.png', 'Mensaje de error en pregunta.png', 'Sin evidencia: sin documentos que ver ni referencias inventadas.')
+  await captura(page, '04-sin-evidencia.png')
 })
 
 test('Errores diferenciados de la consulta (HU10)', async ({ page }) => {
@@ -163,20 +155,21 @@ test('Errores diferenciados de la consulta (HU10)', async ({ page }) => {
   await page.goto(resultados('hola'))
   await expect(page.getByRole('heading', { name: 'La pregunta no es válida' })).toBeVisible({ timeout: 30_000 })
   await sinCursor(page)
-  await captura(page, '05-error-validacion.png', 'Consumir los servicios de consulta 2.png', 'Validación real del servidor (422) con ID de soporte y contrato JSON.')
+  await captura(page, '05-error-validacion.png')
 
-  const casos: [string, string, string, number, number, string][] = [
-    ['retrieval', 'No pudimos buscar en los documentos', '06-error-recuperacion.png', 1017, 577, 'Consumir los servicios de consulta 3.png'],
-    ['vector', 'La base de conocimiento no está disponible', '07-error-base-vectorial.png', 1015, 562, 'Consumir los servicios de consulta 4.png'],
-    ['proveedor', 'No pudimos generar la respuesta', '08-error-proveedor.png', 1022, 567, 'Consumir los servicios de consulta 5.png'],
+  // Tamaños de "Consumir los servicios de consulta 3, 4 y 5".
+  const casos: [string, string, string, number, number][] = [
+    ['retrieval', 'No pudimos buscar en los documentos', '06-error-recuperacion.png', 1017, 577],
+    ['vector', 'La base de conocimiento no está disponible', '07-error-base-vectorial.png', 1015, 562],
+    ['proveedor', 'No pudimos generar la respuesta', '08-error-proveedor.png', 1022, 567],
   ]
-  for (const [fallo, titulo, archivo, ancho, alto, referencia] of casos) {
+  for (const [fallo, titulo, archivo, ancho, alto] of casos) {
     await control('forusguide', { fallo })
     await vista(page, ancho, alto)
     await page.goto(resultados(PREGUNTA))
     await expect(page.getByRole('heading', { name: titulo })).toBeVisible({ timeout: 30_000 })
     await sinCursor(page)
-    await captura(page, archivo, referencia, `Fallo "${fallo}" inyectado en el servicio de consulta simulado.`)
+    await captura(page, archivo)
   }
   await control('forusguide', { fallo: null, retrasoMs: 32_000 })
   try {
@@ -184,7 +177,7 @@ test('Errores diferenciados de la consulta (HU10)', async ({ page }) => {
     await page.goto(resultados(PREGUNTA))
     await expect(page.getByRole('heading', { name: 'La consulta tardó demasiado' })).toBeVisible({ timeout: 60_000 })
     await sinCursor(page)
-    await captura(page, '09-error-tiempo-agotado.png', null, 'Tiempo máximo del servidor (30 s) agotado: TIMEOUT sin respuesta parcial.')
+    await captura(page, '09-error-tiempo-agotado.png')
   } finally {
     await control('forusguide', { retrasoMs: 0 })
   }
@@ -202,11 +195,11 @@ test('Reemplazo de un artículo (HU08)', async ({ page }) => {
     return dialogo
   }
   let dialogo = await abrir('Politica_Viaticos_v3.2.json', 'Politica_Viaticos_v3.3.json')
-  await captura(dialogo, '12-reemplazo-dialogo.png', 'Vista de edicion de documento.png', 'Diálogo de reemplazo con el título canónico del artículo y su versión activa.')
+  await captura(dialogo, '12-reemplazo-dialogo.png')
   await dialogo.getByRole('button', { name: 'Reemplazar documento' }).click()
   const exito = page.getByRole('dialog', { name: 'Documento reemplazado' })
   await expect(exito).toBeVisible({ timeout: 30_000 })
-  await captura(exito, '13-reemplazo-exito.png', 'Mensaje de exito de reemplazo de documento.png', 'Reemplazo verificado: la nueva versión ya está activa.')
+  await captura(exito, '13-reemplazo-exito.png')
   await exito.getByRole('button', { name: 'Volver a documentos' }).click()
 
   await control('pinecone', { upsertFalla: 'kd_doc0006_v1_2' })
@@ -215,7 +208,7 @@ test('Reemplazo de un artículo (HU08)', async ({ page }) => {
     await dialogo.getByRole('button', { name: 'Reemplazar documento' }).click()
     const error = page.getByRole('dialog', { name: 'No se pudo reemplazar el documento' })
     await expect(error).toBeVisible({ timeout: 30_000 })
-    await captura(error, '14-reemplazo-error.png', 'error ar reemplazar archivo.png', 'Fallo real de indexación: se conserva la versión vigente y no se publica la nueva.')
+    await captura(error, '14-reemplazo-error.png')
     await error.getByRole('button', { name: 'Cerrar' }).click()
   } finally {
     await control('pinecone', { upsertFalla: null })
@@ -227,18 +220,18 @@ test('Eliminación con fallo parcial y reintento (HU09)', async ({ page }) => {
   await page.goto('/documentos')
   await page.getByRole('button', { name: 'Eliminar Guia_Estilo_Archivistica.json' }).click()
   const confirmar = page.getByRole('dialog', { name: '¿Eliminar este documento?' })
-  await captura(confirmar, '15-eliminar-dialogo.png', 'Eliminar documento.png', 'Confirmación explícita antes de eliminar.')
+  await captura(confirmar, '15-eliminar-dialogo.png')
   await control('pinecone', { borradoDeja: 1 })
   await confirmar.getByRole('checkbox').check()
   await confirmar.getByRole('button', { name: 'Eliminar documento' }).click()
   const parcial = page.getByRole('dialog', { name: 'Eliminación incompleta' })
   await expect(parcial).toBeVisible({ timeout: 60_000 })
-  await captura(parcial, '16-eliminacion-incompleta.png', 'Eliminacion incompleta.png', 'El índice conservó 1 embedding: no se informa éxito y el documento queda bloqueado.')
+  await captura(parcial, '16-eliminacion-incompleta.png')
   await control('pinecone', { borradoDeja: 0 })
   await parcial.getByRole('button', { name: 'Reintentar' }).click()
   const exito = page.getByRole('dialog', { name: 'Documento eliminado' })
   await expect(exito).toBeVisible({ timeout: 60_000 })
-  await captura(exito, '17-eliminado-exito.png', 'Exito eliminado.png', 'Reintento completo: fragmentos, embeddings y registro retirados.')
+  await captura(exito, '17-eliminado-exito.png')
 })
 
 test('Visor del JSON auténtico y fuente externa (HU04)', async ({ page }) => {
@@ -248,12 +241,12 @@ test('Visor del JSON auténtico y fuente externa (HU04)', async ({ page }) => {
   await page.locator('.source-card').filter({ hasText: 'Política de viáticos internacionales' }).locator('.source-title-link').click()
   await expect(page.getByText(/SHA-256 verificado/)).toBeVisible()
   await expect(page.locator('.json-usado').first()).toBeVisible()
-  await captura(page, '18-visor-json.png', null, 'JSON original de la versión usada: formateado, rutas resaltadas y SHA-256 verificado en el navegador.')
-  await captura(page, '19-visor-json-completo.png', null, 'La misma vista completa: JSON, fragmentos indexados con sus rutas y registro técnico.', true)
+  await captura(page, '18-visor-json.png')
+  await captura(page, '19-visor-json-completo.png', true)
 
   await page.goto('/fuentes/rollover_externo')
   await expect(page.getByRole('note')).toBeVisible()
-  await captura(page, '20-fuente-externa.png', null, 'Artículo de ForUsGuide: se muestran sus fragmentos indexados y se avisa que no es el JSON original.')
+  await captura(page, '20-fuente-externa.png')
 })
 
 test('Móvil (375 px)', async ({ page }) => {
@@ -261,11 +254,11 @@ test('Móvil (375 px)', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.suggestion-chip').first()).toBeVisible()
   await sinCursor(page)
-  await captura(page, '21-movil-consulta.png', null, 'Consulta en móvil.', true)
+  await captura(page, '21-movil-consulta.png', true)
   await page.goto(resultados(PREGUNTA))
   await expect(page.getByRole('region', { name: 'Respuesta' })).toBeVisible({ timeout: 30_000 })
-  await captura(page, '22-movil-resultados.png', null, 'Resultados en móvil.', true)
+  await captura(page, '22-movil-resultados.png', true)
   await page.goto('/documentos')
   await expect(page.locator('tbody tr').first()).toBeVisible()
-  await captura(page, '23-movil-documentos.png', null, 'Documentos en móvil: cada artículo como tarjeta.', true)
+  await captura(page, '23-movil-documentos.png', true)
 })
