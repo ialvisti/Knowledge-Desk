@@ -85,8 +85,11 @@ export async function iniciarPineconeSimulado(puerto = 0): Promise<PineconeSimul
 
     if (request.method === 'POST' && url.pathname === '/vectors/delete') {
       const { ids } = JSON.parse(await cuerpo(request)) as { ids: string[] }
+      // Los que quedan son registros que EXISTEN: pedir borrar un ID inexistente
+      // no cuenta como embedding residual.
+      const existentes = ids.filter(id => estado.registros.has(id))
       const deja = estado.fallos.borradoDeja ?? 0
-      ids.slice(0, Math.max(0, ids.length - deja)).forEach(id => estado.registros.delete(id))
+      existentes.slice(0, Math.max(0, existentes.length - deja)).forEach(id => estado.registros.delete(id))
       return responder(200, {})
     }
 

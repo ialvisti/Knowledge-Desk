@@ -516,7 +516,14 @@ export class GestorDocumentos {
     try {
       await this.paso(opId, 'confirmacion', 'ok', 'El operador confirmó que el documento está retirado')
       const versiones = doc.versiones.filter(item => item.estado !== 'retirada')
+      // Se intenta borrar todo ID conocido de cualquier versión, pero el total
+      // solo cuenta los que pueden seguir en el índice: la versión activa o en
+      // proceso y las que tienen limpieza pendiente o desconocida. Una versión
+      // reemplazada ya limpiada no infla el conteo.
       const conocidos = versiones.flatMap(version => this.idsConocidos(docId, version.version, version.fragmentos))
+      const vigentes = versiones
+        .filter(version => version.estado === 'activa' || version.estado === 'procesando' || version.embeddingsResiduales !== 0)
+        .flatMap(version => this.idsConocidos(docId, version.version, version.fragmentos))
 
       // 1. Totales ANTES de borrar nada, desde el registro (que conoce los
       //    fragmentos publicados aunque el disco falle) y desde el índice si
@@ -526,9 +533,9 @@ export class GestorDocumentos {
       try { enDisco = await this.fragmentosEnDisco(docId, versiones) } catch { enDisco = 0 }
       let listados: number | null = null
       if (this.indice) {
-        try { listados = new Set([...(await this.indice.listarIds(prefijoDocumento(docId))), ...conocidos]).size } catch { listados = null }
+        try { listados = new Set([...(await this.indice.listarIds(prefijoDocumento(docId))), ...vigentes]).size } catch { listados = null }
       }
-      const estimadoIndice = conocidos.length + versiones.reduce((total, version) => total + Math.max(0, version.embeddingsResiduales), 0)
+      const estimadoIndice = vigentes.length
       progreso.fragmentosTotal = Math.max(doc.eliminacion?.fragmentosTotal ?? 0, enRegistro, enDisco)
       progreso.embeddingsTotal = Math.max(doc.eliminacion?.embeddingsTotal ?? 0, listados ?? estimadoIndice)
       await this.registro.mutar(estado => {
@@ -600,11 +607,12 @@ export class GestorDocumentos {
           detalle: completo ? `Documento retirado del registro; ${archivados.length} original(es) archivado(s)` : 'Registro pendiente hasta completar la eliminación',
         })
       })
+      const quedan = (cantidad: number, singular: string, plural: string) => (cantidad === 1 ? `Queda 1 ${singular} asociado` : `Quedan ${cantidad} ${plural} asociados`)
       const pendiente = embeddingsRestantes === null
         ? `No se pudo confirmar el retiro de los embeddings de este documento`
         : embeddingsRestantes > 0
-          ? `Quedan ${embeddingsRestantes} embeddings asociados a este documento`
-          : `Quedan ${fragmentosRestantes} fragmentos asociados a este documento`
+          ? `${quedan(embeddingsRestantes, 'embedding', 'embeddings')} a este documento`
+          : `${quedan(fragmentosRestantes, 'fragmento', 'fragmentos')} a este documento`
       await this.cerrar(opId, docId, completo ? 'exitoso' : 'fallido_parcial', completo
         ? 'Ya no aparecerá como fuente ni se usará como contexto en nuevas consultas.'
         : `No se puede eliminar por completo. ${pendiente}. La operación no se registra como exitosa.`)

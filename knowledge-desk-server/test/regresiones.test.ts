@@ -163,6 +163,32 @@ describe('Revisión · una eliminación interrumpida se cierra como parcial y se
   })
 })
 
+describe('Revisión · los conteos de una eliminación no incluyen versiones ya limpiadas', () => {
+  let entorno: Entorno
+  before(async () => { entorno = await crearEntorno() })
+  after(async () => entorno.cerrar())
+
+  it('tras un reemplazo, el total de embeddings es el de lo que puede seguir en el índice y el parcial es real', async () => {
+    const id = await cargar(entorno, 'Politica.json', json(VIATICOS_V1))
+    await entorno.subir('Politica_v2.json', json(VIATICOS_V2), `/api/documentos/${id}/reemplazo`)
+    await entorno.servicios.gestor.esperarInactividad()
+    assert.equal(idsCon(entorno.pinecone, 'kd_doc0001_v1_0_').length, 0, 'la versión anterior ya se limpió')
+    const vigentes = idsCon(entorno.pinecone, 'kd_doc0001_v1_1_').length
+    const eliminar = async () => (await entorno.app.inject({ method: 'POST', url: `/api/documentos/${id}/eliminacion`, payload: { confirmado: true } })).json().operacion
+
+    entorno.pinecone.fallos.borradoDeja = 1
+    const parcial = await eliminar()
+    entorno.pinecone.fallos.borradoDeja = 0
+    assert.equal(parcial.resultado, 'fallido_parcial')
+    assert.deepEqual(parcial.contadores.embeddings, { hechos: vigentes - 1, total: vigentes })
+    assert.equal(idsCon(entorno.pinecone, 'kd_doc0001_').length, 1)
+
+    const final = await eliminar()
+    assert.equal(final.resultado, 'exitoso')
+    assert.deepEqual(final.contadores.embeddings, { hechos: vigentes, total: vigentes })
+  })
+})
+
 describe('Revisión · la consulta comprueba la disponibilidad después del último await', () => {
   let entorno: Entorno
   before(async () => { entorno = await crearEntorno() })
