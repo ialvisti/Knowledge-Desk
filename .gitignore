@@ -11,6 +11,11 @@ playwright-report/
 .env.*
 !.env.example
 
+# Datos de ejecución: registro documental, originales, índice local y el stack simulado
+data/
+data-simulado/
+demo/documentos/
+
 # Bloqueos temporales de Office y archivos del sistema
 ~$*
 .DS_Store

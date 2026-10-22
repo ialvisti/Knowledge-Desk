@@ -1,0 +1,30 @@
+{
+  "name": "knowledge-desk-server",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/main.ts",
+    "dev": "node --watch --env-file-if-exists=.env src/main.ts",
+    "simulados": "node test/support/simulated-stack.ts",
+    "simulados:demo": "node test/support/simulated-stack.ts --sembrar",
+    "demo:documentos": "node test/support/simulated-stack.ts --documentos",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src test",
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@fastify/multipart": "^10.1.4",
+    "@fastify/static": "^10.1.7",
+    "@pinecone-database/pinecone": "^9.1.0",
+    "fastify": "^5.12.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "oxlint": "^1.89.0",
+    "typescript": "~6.0.3"
+  }
+}
