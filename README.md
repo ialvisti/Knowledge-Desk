@@ -18,18 +18,20 @@ transacciones y nada se envía a clientes.
   [matriz de los 51 criterios](docs/verificacion/MATRIZ_CRITERIOS.md) da el estado de
   cada criterio por modo y no oculta condiciones. La suite de pruebas versionada,
   la misma que ejecuta la CI, no llama a servicios reales.
-- **Vista previa real desplegada** en <https://knowledge-desk-preview.onrender.com>:
-  Render gratuito, modo `local` con OpenAI y datos temporales.
-  - El smoke real con un artículo **sintético** pasó: carga, consulta con fuente, JSON
-    original byte a byte, reemplazo, eliminación y consulta sin evidencia tras
-    eliminar.
-  - Detalle y restricciones en el
-    [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md).
+- **Vista previa real** en <https://knowledge-desk-preview.onrender.com> (Render
+  gratuito, datos temporales).
+  - Primer despliegue (`9337e67`): modo `local` con OpenAI y acceso protegido. Su
+    smoke real con un artículo **sintético** pasó (carga, consulta con fuente, JSON
+    original byte a byte, reemplazo, eliminación y consulta sin evidencia).
+  - **Actual** (`5c1df33`): acceso sin inicio de sesión y consultas con el **servicio
+    real de ForUsGuide**, solo consulta y sin credenciales de Pinecone. La consulta en
+    vivo sin credenciales se verificó el 2026-10-22 sobre el despliegue anterior
+    (`4a75c39`).
+  - Detalle en el [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md).
 - **Pendiente** (ver [NEXT_STEPS.md](NEXT_STEPS.md)):
-  - corpus real aprobado;
   - evaluación de calidad y latencia con una muestra validada;
   - aceptación de negocio de cinco propuestas configurables;
-  - integración real con ForUsGuide y Pinecone (modo `forusguide`, condicionada);
+  - capacidades de ForUsGuide que condicionan su modo;
   - persistencia (opcional, no autorizada).
 
 ## Cómo funciona
@@ -144,78 +146,91 @@ Cada consulta, carga o reemplazo con servicios reales consume llamadas al modelo
 | `npm run verificar` (raíz) | Lo mismo sin las auditorías. Es lo que ejecuta la CI (`.github/workflows/verificar.yml`, Node 24.14, Chromium, sin secretos). |
 | `scripts\capturas.ps1` | Regenera las 23 capturas de `docs/verificacion/` contra el stack simulado y [`comparacion.html`](docs/verificacion/comparacion.html). `-SoloComparacion` solo regenera la página. |
 
-Resultado local del 2026-10-22, con el acceso público incluido:
+Resultados del 2026-10-22:
 
-- Servidor: 98 pruebas.
-- Interfaz: 81 pruebas de navegador y E2E.
-- Tipos, lint y build correctos.
-- `npm audit`: 0 vulnerabilidades en el servidor y en la interfaz.
+- **Local, código actual** (`5c1df33`):
+  - servidor: 103 pruebas;
+  - interfaz: 83 pruebas de navegador y E2E;
+  - tipos y lint correctos. El build y `npm audit` no se repitieron en local.
+- **CI de `5c1df33`**: estado en la
+  [run `39850199650`](https://github.com/ialvisti/Knowledge-Desk/actions/runs/39850199650).
+- **CI de `4a75c39`** (histórica,
+  [run `39835813660`](https://github.com/ialvisti/Knowledge-Desk/actions/runs/39835813660)):
+  98 pruebas del servidor, 81 de interfaz y E2E, build, tipos, lint y auditorías, en
+  verde.
 
 La suite de pruebas versionada (la de la CI) usa artículos JSON sintéticos y
 simuladores locales, y no llama a servicios reales. No hay corpus privado en el
 repositorio.
 
-Aparte de esa suite, se hizo un smoke **operacional real**, también con Playwright,
-contra la vista previa desplegada en Render y con un artículo sintético. El
-[registro del despliegue](docs/verificacion/DEPLOY_RENDER.md) detalla qué acredita y
-qué no, y registra la CI en verde del commit desplegado.
+Aparte de esa suite hay dos pruebas **operacionales reales**, separadas de las
+cifras anteriores. El [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md)
+detalla qué acredita cada una y qué no:
 
-## Vista previa gratuita en Render (desplegada)
+- el smoke del modo `local` (histórico) con un artículo sintético;
+- la prueba en vivo con ForUsGuide, sin login.
+
+## Vista previa gratuita en Render
 
 <https://knowledge-desk-preview.onrender.com>. El
-[registro del despliegue](docs/verificacion/DEPLOY_RENDER.md) recoge el servicio, el
-commit desplegado, el smoke real y las restricciones.
+[registro del despliegue](docs/verificacion/DEPLOY_RENDER.md) recoge el servicio, los
+commits, las pruebas reales y las restricciones.
 
-**Acceso sin inicio de sesión.** Después del primer smoke, que se hizo con acceso
-protegido, el usuario decidió quitar el login de esta vista previa. `render.yaml` fija
-`KD_ACCESO_PUBLICO=true`, de modo que, al desplegar este cambio, se entra
-directamente: cualquiera con la URL consulta y administra artículos, y cada uso
-consume la cuota de OpenAI. El resultado de ese despliegue se registrará en el
-registro cuando se verifique.
+Por decisión del usuario:
 
-**Probarla con el artículo sintético**
+1. **Sin inicio de sesión** (`KD_ACCESO_PUBLICO=true`): se entra directamente.
+2. **Motor de consulta: el servicio real de ForUsGuide** (`KD_MODO=forusguide`,
+   `POST https://forusguide.onrender.com/api/v1/knowledge-question`). Las respuestas y
+   las fuentes salen del corpus de ForUsGuide, no del artículo sintético local.
 
-1. Descarga [`demo/articulo-sintetico-viaticos.json`](demo/articulo-sintetico-viaticos.json)
-   (datos ficticios).
-2. En **Documentos**, carga el JSON con **Explorar archivos** y espera a que quede
-   **Indexado**.
-3. Pregunta en **Consulta**, por ejemplo: "¿En qué plazo se solicita el reembolso de
-   viáticos internacionales después del viaje?".
+Despliegues y prueba en vivo:
 
-Si Documentos aparece vacío, el servicio se suspendió o se reinició y perdió los datos:
-vuelve a cargar el archivo. Nada se carga solo.
+- **Actual**: `dep-dbd779ifngtc73fron20`, commit `5c1df33`. El blueprint y el panel
+  coinciden.
+- **Prueba en vivo del 2026-10-22**, sobre el despliegue anterior
+  (`dep-dbd5qu3l550s73apj9gg`, commit `4a75c39`), en un navegador nuevo sin
+  credenciales:
+  - "Como hacer un retiro" → `answered`, `engine: forusguide`, modelo `gpt-5.4`,
+    9 fuentes, 14 fragmentos, cobertura alta.
+  - Request `req-ee5c9150`, 25 030 ms.
+  - Se abrió una fuente y Documentos; ningún error de JS y ninguna cabecera
+    `Authorization`.
 
-[`render.yaml`](render.yaml) describe ese único web service **gratuito y sin disco**:
+[`render.yaml`](render.yaml) describe el web service **gratuito y sin disco**:
 
 - Compila la interfaz y arranca `node knowledge-desk-server/src/main.ts`, con salud en
   `/api/salud` y `autoDeploy: false`.
-- Fija `KD_MODO=local` (corpus propio cargado desde Documentos) y
-  `KD_LLM_BASE_URL=https://api.openai.com/v1`.
-- Fija los modelos `KD_EMBEDDINGS_MODEL=text-embedding-3-small` y
-  `KD_CHAT_MODEL=gpt-6-luna`, con `KD_CHAT_REASONING_EFFORT=none`, que ese modelo
-  necesita para aceptar `temperature` 0.
-- Fija `KD_ACCESO_PUBLICO=true` (sin inicio de sesión).
-- En el panel de Render (`sync: false`, sin valores en el repositorio) se rellena
-  `KD_LLM_API_KEY` y, opcionalmente, `KD_CONTACTO_URL`.
-- En el panel **no** deben quedar `KD_ACCESO_BASICO`, `KD_IDENTIDAD_HEADER`,
-  `KD_PROXY_SECRETO` ni `KD_OPERADORES`: con el acceso público, el servidor no
-  arrancaría.
-- **Datos temporales**:
-  - `KD_DATA_DIR=/tmp/knowledge-desk` está en el sistema de archivos efímero de la
-    instancia gratuita. Los artículos cargados, el registro y el índice local se
-    pierden al reiniciar, al redesplegar o cuando el servicio se suspende por
-    inactividad.
-  - `KD_DATOS_TEMPORALES=true` hace que el pie de Documentos lo avise.
-  - Esta marca no cambia el modo ni presenta el servicio como simulado: el proveedor
-    es real y cada carga y consulta consume su cuota.
-- `KD_MAX_ARTICULO_MB=10`, por la memoria de la instancia gratuita.
-- `KD_EJEMPLOS_ARCHIVO=demo/ejemplos-preview.json`: tres preguntas sobre el contenido
-  del artículo **sintético** de viáticos (`demo/articulo-sintetico-viaticos.json`),
-  que no es una política real.
-  - Solo se muestran mientras un artículo las sustenta: con el corpus vacío o tras un
-    reinicio se ocultan.
-  - Nada se carga solo al arrancar, porque gastaría cuota del proveedor en cada
-    reinicio.
+- Fija `KD_MODO=forusguide` y `FORUSGUIDE_API_URL=https://forusguide.onrender.com`.
+  La `X-API-Key` (`FORUSGUIDE_API_KEY`, `sync: false`) solo va en el panel de Render.
+- **Solo consulta.** No declara `PINECONE_API_KEY` ni `PINECONE_INDEX_HOST`, así que
+  Knowledge Desk no tiene indexación y nunca escribe, siembra ni borra en el índice
+  compartido de ForUsGuide. Con el acceso público, el servidor se niega a arrancar si
+  aparecen.
+  - Documentos lo dice ("Las consultas usan el corpus de ForUsGuide…") y no permite
+    cargar.
+  - `/api/estado` devuelve `indexacion.configurada: false` y lista esas dos variables
+    en `faltan`, a propósito.
+- **Fuentes externas**: ForUsGuide no expone el JSON original de sus artículos. Al
+  abrir una fuente se muestran sus fragmentos indexados (`/api/v1/chunks`), con el
+  aviso de que no son el original.
+- **Ejemplos**: los de la lista `forusguide` de `config/ejemplos.json` (valor por
+  defecto), empezando por "¿Cómo hago un retiro de mi 401(k)?". Sin acceso de lectura
+  al índice no se verifican antes de mostrarse.
+- `KD_ACCESO_PUBLICO=true`, `KD_DATA_DIR=/tmp/knowledge-desk` con
+  `KD_DATOS_TEMPORALES=true` y `KD_MAX_ARTICULO_MB=10`. En el panel solo se rellenan
+  `FORUSGUIDE_API_KEY` y, opcionalmente, `KD_CONTACTO_URL`. No existen
+  `KD_ACCESO_BASICO`, `KD_IDENTIDAD_HEADER`, `KD_PROXY_SECRETO`, `KD_OPERADORES`,
+  `PINECONE_API_KEY` ni `PINECONE_INDEX_HOST`.
+- Cada consulta llama a ForUsGuide con la clave del servidor y consume su cuota.
+- **Límites**:
+  - La calidad (≥ 85 %, 20 de 20) no se ha medido.
+  - La única consulta en vivo tardó 25 s, por encima de la meta de 2 a 5 s.
+
+**Vista previa anterior (histórico).** El despliegue `9337e67` usaba el modo `local`
+con OpenAI, acceso protegido y el artículo sintético
+[`demo/articulo-sintetico-viaticos.json`](demo/articulo-sintetico-viaticos.json), que
+se cargaba en Documentos. Su smoke real está en el registro. El artículo sigue sirviendo
+para probar el modo `local`.
 
 La persistencia (plan de pago con disco) es un paso futuro opcional, **no
 autorizado**. Ver [NEXT_STEPS.md](NEXT_STEPS.md).
@@ -230,12 +245,13 @@ autorizado**. Ver [NEXT_STEPS.md](NEXT_STEPS.md).
 - Interfaz y API en el mismo origen. Credenciales solo en el servidor. Acceso interno
   sin cuentas propias: credenciales de piloto o proxy de identidad.
 - Excepción decidida por el usuario: la vista previa de Render no tiene inicio de
-  sesión (`KD_ACCESO_PUBLICO=true`).
+  sesión (`KD_ACCESO_PUBLICO=true`) y consulta el servicio real de ForUsGuide, sin
+  escribir en su índice.
 - Un reemplazo es del mismo `article_id`. La eliminación exige confirmación y se
   reintenta si es parcial.
-- El primer despliegue es una vista previa **gratuita** en Render, con datos
-  temporales y modo `local`. Está desplegada. No hay cómputo ni disco de pago; el
-  uso del modelo consume la API de OpenAI.
+- La vista previa es **gratuita** en Render, con datos temporales y sin cómputo ni
+  disco de pago. El primer despliegue usó el modo `local` con OpenAI. El actual
+  consulta ForUsGuide, que consume la cuota de ese servicio.
 
 **Propuestas implementadas, pendientes de aprobación de negocio** (detalle en
 [NEXT_STEPS.md](NEXT_STEPS.md)):

@@ -40,6 +40,21 @@ Playwright en modo `local` (vista previa en Render, OpenAI, artículo sintético
 [registro del despliegue](DEPLOY_RENDER.md). No cambia ningún estado de la matriz y no
 toca el modo `forusguide`.
 
+Después, la vista previa pasó al modo `forusguide` de solo consulta, con acceso
+público (código actual `5c1df33`). Se registraron dos pruebas reales, también en el
+registro:
+
+- una llamada directa a `knowledge-question` (HTTP 200, `well_covered`), que confirma
+  que el contrato coincide con el adaptador;
+- una prueba en vivo en el navegador sin login sobre `4a75c39` (`req-ee5c9150`,
+  `answered`, 9 fuentes, 25 s).
+
+Tampoco cambian ningún estado:
+
+- es una sola consulta y no prueba indexación, calidad ni latencia;
+- los ejemplos (#27) se muestran sin verificar porque no hay lectura del índice;
+- las fuentes externas siguen sin JSON original (#21).
+
 Evidencia:
 
 - `S:` pruebas del servidor (`knowledge-desk-server/test/*.test.ts`).
