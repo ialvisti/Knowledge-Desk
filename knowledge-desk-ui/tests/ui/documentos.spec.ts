@@ -154,6 +154,20 @@ test.describe('Modo demostración', () => {
   })
 })
 
+test.describe('Vista previa con ForUsGuide como motor, sin indexación', () => {
+  test('Documentos dice de dónde salen las respuestas y no permite cargar', async ({ page }) => {
+    await simularServidor(page, {
+      indexacion: false,
+      estado: { modo: 'forusguide', accesoPublico: true, indexacion: { configurada: false, destino: null } },
+    })
+    await page.goto('/documentos')
+    await expect(page.getByText('Las consultas usan el corpus de ForUsGuide. Este servidor no tiene indexación configurada: aquí no se cargan artículos.')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Explorar archivos' })).toBeDisabled()
+    await expect(page.locator('.document-list-footer')).toContainText('Indexación no configurada')
+    await expect(page.getByText('Aún no hay artículos cargados.')).toBeVisible()
+  })
+})
+
 test.describe('Acceso público en la vista previa', () => {
   test('la sesión dice que el acceso es abierto solo cuando el servidor lo declara', async ({ page }) => {
     await simularServidor(page, { estado: { accesoPublico: true, usuario: 'Acceso público' } })

@@ -1,17 +1,18 @@
 # Blueprint de Render para la VISTA PREVIA GRATUITA de Knowledge Desk: un único
 # web service que sirve la API y la interfaz compilada en el mismo origen.
 #
-# - Plan free, sin disco. El sistema de archivos es efímero: los artículos JSON
-#   cargados, el registro y el índice local viven en /tmp y se pierden al
-#   reiniciar, al redesplegar o cuando el servicio se suspende por inactividad.
-#   KD_DATOS_TEMPORALES=true hace que la interfaz lo avise. La persistencia (plan
-#   de pago con disco) es un paso futuro opcional que no está autorizado.
-# - Modo local: corpus propio, cargado desde la pantalla Documentos, y un
-#   proveedor OpenAI-compatible para embeddings y redacción. Cada carga y cada
-#   consulta llama al proveedor y consume su cuota.
-# - Acceso público (KD_ACCESO_PUBLICO=true): sin inicio de sesión.
+# - Motor de consulta: el servicio REAL de ForUsGuide (KD_MODO=forusguide,
+#   POST /api/v1/knowledge-question). Las respuestas y fuentes salen de su corpus.
+# - Solo consulta: sin PINECONE_*, Knowledge Desk no tiene indexación y nunca
+#   escribe, siembra ni borra en el índice compartido de ForUsGuide. Documentos lo
+#   indica y no permite cargar artículos. Con KD_ACCESO_PUBLICO=true el servidor
+#   se niega a arrancar si alguien añade PINECONE_API_KEY o PINECONE_INDEX_HOST.
+# - Acceso público (KD_ACCESO_PUBLICO=true): sin inicio de sesión. Cada consulta
+#   llama a ForUsGuide con la clave del servidor y consume su cuota.
+# - Plan free, sin disco: el registro local vive en /tmp y es temporal
+#   (KD_DATOS_TEMPORALES=true). La persistencia es un paso futuro no autorizado.
 # - No contiene secretos. Las variables con "sync: false" se rellenan en el panel
-#   de Render al crear el Blueprint; nunca se escriben en este archivo.
+#   de Render; nunca se escriben en este archivo.
 # - autoDeploy: false. Nada se despliega sin una acción explícita.
 services:
   - type: web
@@ -34,35 +35,20 @@ services:
         value: /tmp/knowledge-desk
       - key: KD_DATOS_TEMPORALES
         value: "true"
-      # Corpus propio con un proveedor OpenAI-compatible.
+      # Consulta con el servicio real de ForUsGuide. La X-API-Key solo en el panel.
       - key: KD_MODO
-        value: local
-      - key: KD_LLM_BASE_URL
-        value: https://api.openai.com/v1
-      - key: KD_LLM_API_KEY
+        value: forusguide
+      - key: FORUSGUIDE_API_URL
+        value: https://forusguide.onrender.com
+      - key: FORUSGUIDE_API_KEY
         sync: false
-      # Modelos de la vista previa (disponibles en la cuenta del proveedor el
-      # 2026-10-22). Se pueden cambiar en el panel sin tocar el código.
-      - key: KD_EMBEDDINGS_MODEL
-        value: text-embedding-3-small
-      - key: KD_CHAT_MODEL
-        value: gpt-6-luna
-      # gpt-6-luna solo acepta temperature 0 con reasoning_effort "none". Si se
-      # cambia a un modelo sin razonamiento, se puede borrar esta variable.
-      - key: KD_CHAT_REASONING_EFFORT
-        value: none
-      # Ejemplos sobre el artículo sintético de viáticos. Solo se muestran si el
-      # corpus cargado los sustenta; nada se carga solo al arrancar.
-      - key: KD_EJEMPLOS_ARCHIVO
-        value: demo/ejemplos-preview.json
-      # Artículos JSON de hasta 10 MB: la instancia gratuita tiene poca memoria.
+      # Límite de artículos JSON (sin efecto mientras no haya indexación).
       - key: KD_MAX_ARTICULO_MB
         value: "10"
       # Acceso directo sin inicio de sesión, por decisión del usuario para esta
-      # vista previa: cualquiera con la URL consulta y carga, reemplaza o elimina
-      # artículos, y cada uso consume la cuota del proveedor. No se combina con
-      # KD_ACCESO_BASICO, KD_IDENTIDAD_HEADER, KD_PROXY_SECRETO ni KD_OPERADORES:
-      # si alguna está definida en el panel, el servidor no arranca.
+      # vista previa: cualquiera con la URL consulta. No se combina con
+      # KD_ACCESO_BASICO, KD_IDENTIDAD_HEADER, KD_PROXY_SECRETO, KD_OPERADORES ni,
+      # en este modo, PINECONE_*: si alguna está definida, el servidor no arranca.
       - key: KD_ACCESO_PUBLICO
         value: "true"
       - key: KD_CONTACTO_URL

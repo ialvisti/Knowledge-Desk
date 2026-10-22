@@ -128,6 +128,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (accesoPublico) {
     const conflictos = ['KD_ACCESO_BASICO', 'KD_IDENTIDAD_HEADER', 'KD_PROXY_SECRETO', 'KD_OPERADORES'].filter(nombre => texto(env, nombre) !== null)
     if (conflictos.length) throw new ConfigError(`KD_ACCESO_PUBLICO=true no se combina con ${conflictos.join(', ')}: elige acceso público o acceso controlado`)
+    // En modo forusguide, configurar Pinecone habilita la escritura en el índice
+    // COMPARTIDO con ForUsGuide. Un acceso anónimo nunca puede escribir en él:
+    // la vista pública solo consulta.
+    const escritura = ['PINECONE_API_KEY', 'PINECONE_INDEX_HOST'].filter(nombre => texto(env, nombre) !== null)
+    if (modo === 'forusguide' && escritura.length) {
+      throw new ConfigError(`KD_ACCESO_PUBLICO=true con KD_MODO=forusguide no admite ${escritura.join(', ')}: la vista pública solo consulta y no escribe en el índice compartido`)
+    }
   }
 
   const host = texto(env, 'KD_HOST') ?? (env.RENDER ? '0.0.0.0' : '127.0.0.1')

@@ -4,10 +4,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import type { FastifyInstance } from 'fastify'
-import { construirApp, construirServicios } from '../src/app.ts'
+import { construirApp, construirServicios, type Servicios } from '../src/app.ts'
 import { ConfigError, loadConfig } from '../src/config.ts'
 import { articuloSimple, json } from './support/articulos.ts'
 import { CLAVE_SERVIDOR, crearEntorno, multipart, type Entorno } from './support/entorno.ts'
+import { crearProveedorSimulado } from './support/proveedor-simulado.ts'
 
 const basico = (usuario: string, clave: string) => `Basic ${Buffer.from(`${usuario}:${clave}`).toString('base64')}`
 
@@ -61,14 +62,32 @@ describe('Localhost sin cambios', () => {
   })
 })
 
+// Modo local con el proveedor simulado: con KD_MODO=forusguide el acceso público
+// no admite escritura en el índice compartido (ver forusguide-solo-consulta.test.ts).
 describe('Acceso público explícito (vista previa sin inicio de sesión)', () => {
-  let entorno: Entorno
-  before(async () => { entorno = await crearEntorno({ KD_HOST: '0.0.0.0', KD_ACCESO_PUBLICO: 'true' }) })
-  after(async () => entorno.cerrar())
+  let dir: string
+  let app: FastifyInstance
+  let servicios: Servicios
+  const subir = (nombre: string, contenido: Buffer, ruta = '/api/documentos') => app.inject({ method: 'POST', url: ruta, ...multipart(nombre, contenido) })
+  before(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'kd-acceso-publico-'))
+    const config = loadConfig({
+      KD_MODO: 'local', KD_LLM_BASE_URL: 'http://proveedor.simulado/v1', KD_EMBEDDINGS_MODEL: 'emb-simulado', KD_CHAT_MODEL: 'chat-simulado',
+      KD_HOST: '0.0.0.0', KD_ACCESO_PUBLICO: 'true', KD_DATA_DIR: path.join(dir, 'datos'), KD_UI_DIST: path.join(dir, 'sin-ui'),
+      KD_VERIFICACION_INDICE_MS: '500', KD_VERIFICACION_INTERVALO_MS: '20',
+    })
+    servicios = await construirServicios(config, { fetchProveedor: crearProveedorSimulado().fetch })
+    app = await construirApp(servicios, { logger: false })
+  })
+  after(async () => {
+    await servicios.gestor.esperarInactividad()
+    await app.close()
+    await rm(dir, { recursive: true, force: true })
+  })
 
   it('el estado no exige acceso, permite administrar y ninguna cabecera cambia la identidad', async () => {
     for (const headers of [{}, { authorization: basico('alguien', 'clave-cualquiera-123') }, { 'x-forwarded-email': 'ana@empresa.test', 'x-kd-proxy-secreto': 'inventado' }]) {
-      const respuesta = await entorno.app.inject({ url: '/api/estado', headers })
+      const respuesta = await app.inject({ url: '/api/estado', headers })
       assert.equal(respuesta.statusCode, 200)
       assert.equal(respuesta.headers['www-authenticate'], undefined)
       const estado = respuesta.json()
@@ -82,25 +101,25 @@ describe('Acceso público explícito (vista previa sin inicio de sesión)', () =
 
   it('sin credenciales: carga, original, consulta, reemplazo y eliminación funcionan y se registran como acceso público', async () => {
     const original = json(articuloSimple('acceso_publico_viaticos', 'Viáticos de prueba', 'El reembolso de viáticos internacionales se solicita en el portal de gastos dentro de los 15 días posteriores al viaje.'))
-    const carga = await entorno.subir('Acceso_Publico.json', original)
+    const carga = await subir('Acceso_Publico.json', original)
     assert.equal(carga.statusCode, 202)
     assert.equal(carga.json().operacion.operador, 'Acceso público')
-    await entorno.servicios.gestor.esperarInactividad()
+    await servicios.gestor.esperarInactividad()
     const id = carga.json().documento.id
-    assert.equal(entorno.servicios.registro.documento(id)!.estado, 'indexado')
+    assert.equal(servicios.registro.documento(id)!.estado, 'indexado')
 
-    const archivo = await entorno.app.inject(`/api/documentos/${id}/archivo?version=1.0`)
+    const archivo = await app.inject(`/api/documentos/${id}/archivo?version=1.0`)
     assert.equal(archivo.statusCode, 200)
     assert.ok(archivo.rawPayload.equals(original))
 
-    const consulta = await entorno.preguntar('¿Cuál es el plazo del reembolso de viáticos internacionales?')
-    assert.equal(consulta.status, 200)
-    assert.equal(consulta.cuerpo.outcome, 'answered')
+    const consulta = await app.inject({ method: 'POST', url: '/api/consulta', payload: { question: '¿Cuál es el plazo del reembolso de viáticos internacionales?' } })
+    assert.equal(consulta.statusCode, 200)
+    assert.equal(consulta.json().outcome, 'answered')
 
-    const reemplazo = await entorno.subir('Acceso_Publico_v2.json', original, `/api/documentos/${id}/reemplazo`)
+    const reemplazo = await subir('Acceso_Publico_v2.json', original, `/api/documentos/${id}/reemplazo`)
     assert.equal(reemplazo.statusCode, 202)
-    await entorno.servicios.gestor.esperarInactividad()
-    const eliminacion = await entorno.app.inject({ method: 'POST', url: `/api/documentos/${id}/eliminacion`, payload: { confirmado: true } })
+    await servicios.gestor.esperarInactividad()
+    const eliminacion = await app.inject({ method: 'POST', url: `/api/documentos/${id}/eliminacion`, payload: { confirmado: true } })
     assert.equal(eliminacion.statusCode, 200)
     assert.equal(eliminacion.json().operacion.resultado, 'exitoso')
     assert.equal(eliminacion.json().operacion.operador, 'Acceso público')

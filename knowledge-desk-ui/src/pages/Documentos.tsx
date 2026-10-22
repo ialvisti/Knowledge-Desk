@@ -95,7 +95,12 @@ export function Documentos() {
     if (cargaDisponible) void recibir(Array.from(event.dataTransfer.files))
   }
 
-  const motivoBloqueo = !puede ? 'Tu acceso es solo de consulta.' : !indexacion ? 'La indexación no está configurada en este servidor.' : null
+  // Sin indexación en modo forusguide, las respuestas salen del corpus de
+  // ForUsGuide y aquí no se carga nada: se dice tal cual.
+  const sinIndexacion = estado?.modo === 'forusguide'
+    ? 'Las consultas usan el corpus de ForUsGuide. Este servidor no tiene indexación configurada: aquí no se cargan artículos.'
+    : 'La indexación no está configurada en este servidor.'
+  const motivoBloqueo = !puede ? 'Tu acceso es solo de consulta.' : !indexacion ? sinIndexacion : null
 
   return <main id="contenido" tabIndex={-1} className="documents-page page-container">
     <div className="documents-heading">

@@ -120,6 +120,8 @@ export interface Simulacion {
   estadoRetrasoMs?: number
   ejemplos?: string[]
   documentos?: unknown[]
+  // false: el servidor no tiene indexación configurada (por defecto true).
+  indexacion?: boolean
   // Revisión del corpus del servidor simulado (estado y documentos la informan igual).
   revision?: number
   // Rutas adicionales (detalle de un documento, archivo original, fuentes).
@@ -156,7 +158,7 @@ export async function simularServidor(destino: Page | BrowserContext, simulacion
       return responder(200, { ...estado, ...simulacion.estado, revisionCorpus: registro.revision })
     }
     if (url.pathname === '/api/ejemplos') return responder(200, { examples: simulacion.ejemplos ?? EJEMPLOS_PDF, verified: true, note: null, rejected: [] })
-    if (url.pathname === '/api/documentos') return responder(200, { documentos: simulacion.documentos ?? [], indexacionConfigurada: true, revisionCorpus: registro.revision })
+    if (url.pathname === '/api/documentos') return responder(200, { documentos: simulacion.documentos ?? [], indexacionConfigurada: simulacion.indexacion ?? true, revisionCorpus: registro.revision })
     if (url.pathname === '/api/consulta') {
       const cuerpo = JSON.parse(route.request().postData() ?? '{}') as { question: string }
       registro.consultas.push({ question: cuerpo.question, requestId: route.request().headers()['x-request-id'] ?? null })
