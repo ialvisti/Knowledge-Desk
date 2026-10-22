@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, it } from 'node:test'
+import { ConfigError, loadConfig } from '../src/config.ts'
 import { resumirRutas } from '../src/consulta/service.ts'
 import { descomponer } from '../src/consulta/decompose.ts'
 import { Registro } from '../src/documents/store.ts'
 import { revisarEjemplo } from '../src/examples.ts'
 import { crearIndicePinecone } from '../src/index/pinecone.ts'
 import { IndiceError } from '../src/index/types.ts'
-import { ProveedorError, validarLote } from '../src/providers/openaiCompatible.ts'
+import { ProveedorError, crearProveedor, validarLote } from '../src/providers/openaiCompatible.ts'
 
 describe('Embeddings: un lote corrupto nunca llega al índice', () => {
   it('rechaza índices repetidos, valores no numéricos y dimensiones distintas', () => {
@@ -21,6 +24,34 @@ describe('Embeddings: un lote corrupto nunca llega al índice', () => {
 
   it('acepta un lote válido aunque llegue desordenado', () => {
     assert.deepEqual(validarLote([{ index: 1, embedding: [3, 4] }, { index: 0, embedding: [1, 2] }], 2, null), [[1, 2], [3, 4]])
+  })
+})
+
+describe('Proveedor OpenAI-compatible: reasoning_effort opcional (KD_CHAT_REASONING_EFFORT)', () => {
+  async function cuerpoDelChat(variables: Record<string, string>) {
+    const config = loadConfig({ KD_MODO: 'local', KD_LLM_BASE_URL: 'http://proveedor.simulado/v1', KD_EMBEDDINGS_MODEL: 'emb', KD_CHAT_MODEL: 'chat', KD_DATA_DIR: path.join(os.tmpdir(), 'kd-sin-uso'), ...variables })
+    let enviado: Record<string, unknown> = {}
+    const proveedor = crearProveedor(config.proveedor!, (async (_url: string | URL | Request, init?: RequestInit) => {
+      enviado = JSON.parse(String(init?.body))
+      return Response.json({ choices: [{ message: { content: '{"respuesta":"ok"}' } }] })
+    }) as typeof fetch)
+    await proveedor.chatJson([{ role: 'user', content: 'hola' }], new AbortController().signal)
+    return enviado
+  }
+
+  it('sin la variable el cuerpo no cambia; con "none" se envía junto a temperature 0', async () => {
+    const normal = await cuerpoDelChat({})
+    assert.equal('reasoning_effort' in normal, false)
+    assert.equal(normal.temperature, 0)
+    const conEsfuerzo = await cuerpoDelChat({ KD_CHAT_REASONING_EFFORT: 'none' })
+    assert.equal(conEsfuerzo.reasoning_effort, 'none')
+    assert.equal(conEsfuerzo.temperature, 0)
+  })
+
+  it('cualquier otro valor se rechaza al cargar la configuración', () => {
+    for (const valor of ['low', 'medium', 'NONE']) {
+      assert.throws(() => loadConfig({ KD_MODO: 'local', KD_CHAT_REASONING_EFFORT: valor }), ConfigError, valor)
+    }
   })
 })
 

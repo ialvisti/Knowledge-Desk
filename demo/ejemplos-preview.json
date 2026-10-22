@@ -1,0 +1,8 @@
+{
+  "_instrucciones": "Ejemplos de la vista previa gratuita (KD_EJEMPLOS_ARCHIVO=demo/ejemplos-preview.json, modo local). Se refieren al artículo SINTÉTICO 'Política de viáticos internacionales' (politica_viaticos_internacionales), que no es una política real. El servidor solo los muestra si el corpus cargado los sustenta: con el corpus vacío o tras reiniciar la vista previa, se ocultan.",
+  "local": [
+    "¿Cuáles son los pasos para solicitar el reembolso de viáticos internacionales?",
+    "¿En qué plazo se solicita el reembolso de viáticos internacionales después del viaje?",
+    "¿Qué facturas y formatos se adjuntan a la solicitud de reembolso de viáticos internacionales?"
+  ]
+}

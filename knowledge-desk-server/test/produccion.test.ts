@@ -76,6 +76,26 @@ describe('Producción · interfaz compilada en el mismo origen', () => {
   })
 })
 
+describe('Vista previa con datos temporales (KD_DATOS_TEMPORALES)', () => {
+  it('solo "true" activa la marca, que /api/estado expone sin tocar el modo ni la demostración', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'kd-preview-'))
+    try {
+      for (const [valor, esperado] of [[undefined, false], ['false', false], ['1', false], ['true', true]] as const) {
+        const config = loadConfig({ KD_MODO: 'local', KD_DATA_DIR: path.join(dir, 'datos'), KD_UI_DIST: path.join(dir, 'sin-ui'), ...(valor === undefined ? {} : { KD_DATOS_TEMPORALES: valor }) })
+        assert.equal(config.datosTemporales, esperado, String(valor))
+        const app = await construirApp(await construirServicios(config), { logger: false })
+        const estado = (await app.inject('/api/estado')).json()
+        await app.close()
+        assert.equal(estado.datosTemporales, esperado, String(valor))
+        assert.equal(estado.simulado, false)
+        assert.equal(estado.modo, 'local')
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('Producción · la interfaz compilada también exige acceso', () => {
   let dir: string
   let app: FastifyInstance

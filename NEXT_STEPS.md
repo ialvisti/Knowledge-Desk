@@ -62,8 +62,14 @@ comprobación manual u opt-in:
 3. Hacer una consulta que lo cite y abrir su JSON desde la fuente.
 4. Reemplazarlo y comprobar que la consulta usa solo la versión nueva.
 5. Eliminarlo, incluido un reintento.
-6. Provocar un error de credencial y comprobar que se informa como
-   `UPSTREAM_AUTH_ERROR`.
+6. Provocar un error de credencial y comprobar el código que se informa, que depende
+   del modo:
+   - `forusguide`: una `X-API-Key` rechazada por ForUsGuide se informa como
+     `UPSTREAM_AUTH_ERROR`.
+   - `local`: una clave del proveedor rechazada se informa según la etapa.
+     `RETRIEVAL_ERROR` si fallan los embeddings (de la pregunta o, al indexar, el
+     artículo queda en Error en la etapa de embeddings). `AI_PROVIDER_ERROR` si falla
+     el chat que redacta.
 
 **Hecho cuando**: hay un registro de la ejecución (fecha, entorno, IDs de solicitud
 y resultados) sin secretos ni datos personales, y cualquier diferencia con los
@@ -89,23 +95,41 @@ cobertura, respuestas en 2 a 5 s) **no se han medido**.
 **Hecho cuando**: el informe está acordado y los umbrales de cobertura (paso 6) se
 ajustan con esos datos, si hace falta.
 
-## 5. Decisiones de despliegue
+## 5. Despliegue
 
-`render.yaml` está preparado, pero no se ha creado nada. Antes de crear el Blueprint
-hay que decidir:
+**Plan actual: vista previa gratuita en Render, con datos temporales.**
+`render.yaml` está preparado y no se ha creado nada. Es un web service del plan free,
+sin disco y en modo `local`:
 
-- **Coste**: plan Starter con disco de 1 GB (≈ 7,25 USD/mes según el precio publicado
-  por Render el 2026-10-22).
-- **Acceso**: credenciales de piloto (`KD_ACCESO_BASICO`) o proxy de identidad
-  corporativo, y quiénes son operadores (`KD_OPERADORES`).
-- **Datos**: copias de seguridad del disco y retención de los originales retirados.
-  Con disco hay una sola instancia y una breve interrupción en cada despliegue.
+- Al crear el Blueprint se rellenan en el panel (`sync: false`) `KD_LLM_API_KEY` y
+  `KD_ACCESO_BASICO`, y opcionalmente `KD_OPERADORES` y `KD_CONTACTO_URL`.
+- Fijado en el archivo:
+  - `KD_MODO=local`;
+  - `KD_LLM_BASE_URL=https://api.openai.com/v1`;
+  - `KD_EMBEDDINGS_MODEL=text-embedding-3-small`;
+  - `KD_CHAT_MODEL=gpt-6-luna` con `KD_CHAT_REASONING_EFFORT=none`;
+  - `KD_EJEMPLOS_ARCHIVO=demo/ejemplos-preview.json` (ejemplos sobre el artículo
+    sintético de viáticos, visibles solo mientras esté cargado);
+  - `KD_DATA_DIR=/tmp/knowledge-desk`;
+  - `KD_DATOS_TEMPORALES=true`;
+  - `KD_MAX_ARTICULO_MB=10`.
+- Los artículos cargados se pierden al reiniciar, al redesplegar o cuando el servicio
+  se suspende por inactividad. El pie de Documentos lo avisa.
 
 **Hecho cuando**:
 
-- El Blueprint está creado con las variables del paso 1 en el panel (`sync: false`).
-- El *smoke* posterior pasa: `/api/salud`, `/api/estado` y una consulta autorizada.
-- `autoDeploy` sigue en `false` salvo que se decida lo contrario.
+- El Blueprint está creado con esas variables.
+- El *smoke* posterior pasa:
+  1. `/api/salud` responde 200.
+  2. `/api/estado`, con credencial, devuelve `modo: local`, `faltan: []` y
+     `datosTemporales: true`.
+  3. Se carga un artículo JSON sintético hasta Indexado y una consulta lo cita.
+- `autoDeploy` sigue en `false`.
+
+**Paso futuro opcional, no autorizado: persistencia.**
+Conservar el corpus exige un plan de pago con disco (`KD_DATA_DIR` en el disco y sin
+`KD_DATOS_TEMPORALES`), con copias de seguridad y una política de retención. Con disco,
+Render admite una sola instancia. Solo se prepara si se aprueba el coste.
 
 ## 6. Aprobaciones de negocio pendientes
 

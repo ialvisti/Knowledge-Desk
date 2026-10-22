@@ -153,3 +153,21 @@ test.describe('Modo demostración', () => {
     await expect(page.getByText('gpt-5.5')).toHaveCount(0)
   })
 })
+
+test.describe('Vista previa con datos temporales', () => {
+  const aviso = /vista previa con datos temporales: los artículos cargados se pierden al reiniciar o redesplegar/
+
+  test('Documentos lo avisa solo si el servidor lo declara, sin presentarlo como demostración', async ({ page }) => {
+    await simularServidor(page, { documentos: DOCUMENTOS, estado: { datosTemporales: true } })
+    await page.goto('/documentos')
+    await expect(page.locator('.document-list-footer')).toContainText(aviso)
+    await expect(page.getByText(/simulad/)).toHaveCount(0)
+  })
+
+  test('sin la marca, el pie de Documentos queda como en la referencia', async ({ page }) => {
+    await simularServidor(page, { documentos: DOCUMENTOS })
+    await page.goto('/documentos')
+    await expect(page.locator('.document-list-footer')).toContainText('Índice:')
+    await expect(page.locator('.document-list-footer')).not.toContainText(aviso)
+  })
+})

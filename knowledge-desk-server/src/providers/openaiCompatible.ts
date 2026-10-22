@@ -94,6 +94,7 @@ export function crearProveedor(config: ProveedorConfig, fetchImpl: FetchImpl = f
         messages: mensajes,
         temperature: 0,
         response_format: { type: 'json_object' },
+        ...(config.chatReasoningEffort ? { reasoning_effort: config.chatReasoningEffort } : {}),
       }, signal) as { choices?: { message?: { content?: unknown } }[] }
       const contenido = cuerpo.choices?.[0]?.message?.content
       if (typeof contenido !== 'string' || !contenido.trim()) throw new ProveedorError('formato', 'El modelo no devolvió contenido')

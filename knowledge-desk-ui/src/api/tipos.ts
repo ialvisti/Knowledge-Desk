@@ -73,6 +73,8 @@ export interface EstadoServidor {
   limites: { preguntaMin: number; preguntaMax: number; archivoMaxBytes: number; formatos: string[]; esquema: string }
   // Solo el stack de demostración: servicios externos simulados.
   simulado: boolean
+  // Vista previa con almacenamiento efímero (KD_DATOS_TEMPORALES).
+  datosTemporales: boolean
   consultaTimeoutMs: number
   cobertura: { politica: string; umbralRelevancia: number }
   usuario: string

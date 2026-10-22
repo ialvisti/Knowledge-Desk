@@ -260,6 +260,9 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
       // Solo el stack de demostración activa esta marca: la interfaz la muestra
       // para no presentar servicios simulados como reales.
       simulado: config.demoSimulado,
+      // Vista previa con almacenamiento efímero: la interfaz avisa que los
+      // artículos cargados no se conservan. Los servicios pueden ser reales.
+      datosTemporales: config.datosTemporales,
       consultaTimeoutMs: config.consultaTimeoutMs,
       cobertura: { politica: 'kd-cobertura-v1', umbralRelevancia: config.cobertura.minScore },
       usuario,

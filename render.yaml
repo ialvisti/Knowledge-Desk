@@ -1,76 +1,68 @@
-# Blueprint de Render para Knowledge Desk: un único web service que sirve la API
-# y la interfaz compilada en el mismo origen.
+# Blueprint de Render para la VISTA PREVIA GRATUITA de Knowledge Desk: un único
+# web service que sirve la API y la interfaz compilada en el mismo origen.
 #
+# - Plan free, sin disco. El sistema de archivos es efímero: los artículos JSON
+#   cargados, el registro y el índice local viven en /tmp y se pierden al
+#   reiniciar, al redesplegar o cuando el servicio se suspende por inactividad.
+#   KD_DATOS_TEMPORALES=true hace que la interfaz lo avise. La persistencia (plan
+#   de pago con disco) es un paso futuro opcional que no está autorizado.
+# - Modo local: corpus propio, cargado desde la pantalla Documentos, y un
+#   proveedor OpenAI-compatible para embeddings y redacción. Cada carga y cada
+#   consulta llama al proveedor y consume su cuota.
 # - No contiene secretos. Las variables con "sync: false" se rellenan en el panel
 #   de Render al crear el Blueprint; nunca se escriben en este archivo.
-# - plan starter + disco: el plan free es efímero y no admite discos, así que no
-#   conservaría el registro documental entre reinicios. Coste orientativo según
-#   la página de precios de Render (render.com/pricing), consultada el
-#   2026-10-22: 7 USD/mes de cómputo + 0,25 USD/GB-mes de disco (≈ 7,25 USD/mes
-#   con 1 GB). Crear el Blueprint asigna esos recursos: requiere aprobación previa.
-# - Con disco, Render no permite varias instancias y cada despliegue tiene una
-#   breve interrupción.
 # - autoDeploy: false. Nada se despliega sin una acción explícita.
 services:
   - type: web
-    name: knowledge-desk
+    name: knowledge-desk-preview
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     autoDeploy: false
     buildCommand: npm ci --prefix knowledge-desk-ui --include=dev && npm run build --prefix knowledge-desk-ui && npm ci --prefix knowledge-desk-server --omit=dev
     startCommand: node knowledge-desk-server/src/main.ts
     healthCheckPath: /api/salud
-    disk:
-      name: knowledge-desk-datos
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       # Runtime con TypeScript nativo (type stripping): Node 22.18 o superior.
       - key: NODE_VERSION
         value: 24.14.0
       - key: KD_HOST
         value: 0.0.0.0
+      # Almacenamiento efímero de la vista previa, y el aviso correspondiente.
       - key: KD_DATA_DIR
-        value: /var/data/knowledge-desk
-      # Modo del corpus: forusguide o local. Sin valor, el servidor arranca e
-      # informa que no puede consultar ni indexar.
+        value: /tmp/knowledge-desk
+      - key: KD_DATOS_TEMPORALES
+        value: "true"
+      # Corpus propio con un proveedor OpenAI-compatible.
       - key: KD_MODO
+        value: local
+      - key: KD_LLM_BASE_URL
+        value: https://api.openai.com/v1
+      - key: KD_LLM_API_KEY
         sync: false
-      # Artículos de conocimiento JSON (kb_article_v2) de hasta este tamaño.
+      # Modelos de la vista previa (disponibles en la cuenta del proveedor el
+      # 2026-10-22). Se pueden cambiar en el panel sin tocar el código.
+      - key: KD_EMBEDDINGS_MODEL
+        value: text-embedding-3-small
+      - key: KD_CHAT_MODEL
+        value: gpt-6-luna
+      # gpt-6-luna solo acepta temperature 0 con reasoning_effort "none". Si se
+      # cambia a un modelo sin razonamiento, se puede borrar esta variable.
+      - key: KD_CHAT_REASONING_EFFORT
+        value: none
+      # Ejemplos sobre el artículo sintético de viáticos. Solo se muestran si el
+      # corpus cargado los sustenta; nada se carga solo al arrancar.
+      - key: KD_EJEMPLOS_ARCHIVO
+        value: demo/ejemplos-preview.json
+      # Artículos JSON de hasta 10 MB: la instancia gratuita tiene poca memoria.
       - key: KD_MAX_ARTICULO_MB
-        value: "50"
+        value: "10"
       # Acceso obligatorio fuera de localhost: credenciales de piloto
-      # usuario:clave[,usuario:clave] (claves de 12+ caracteres)…
+      # usuario:clave[,usuario:clave] (claves de 12+ caracteres).
       - key: KD_ACCESO_BASICO
         sync: false
-      # …o un proxy de identidad corporativo que envíe la cabecera de identidad
-      # junto al secreto compartido x-kd-proxy-secreto (24+ caracteres).
-      - key: KD_IDENTIDAD_HEADER
-        sync: false
-      - key: KD_PROXY_SECRETO
-        sync: false
+      # Quiénes pueden cargar, reemplazar y eliminar artículos (opcional).
       - key: KD_OPERADORES
         sync: false
       - key: KD_CONTACTO_URL
-        sync: false
-      # Modo forusguide
-      - key: FORUSGUIDE_API_URL
-        sync: false
-      - key: FORUSGUIDE_API_KEY
-        sync: false
-      - key: PINECONE_API_KEY
-        sync: false
-      - key: PINECONE_INDEX_HOST
-        sync: false
-      - key: PINECONE_NAMESPACE
-        sync: false
-      # Modo local (proveedor OpenAI-compatible)
-      - key: KD_LLM_BASE_URL
-        sync: false
-      - key: KD_LLM_API_KEY
-        sync: false
-      - key: KD_EMBEDDINGS_MODEL
-        sync: false
-      - key: KD_CHAT_MODEL
         sync: false

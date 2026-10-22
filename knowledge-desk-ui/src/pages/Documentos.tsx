@@ -171,7 +171,7 @@ export function Documentos() {
         </div>
         <div className="document-list-footer">
           <span role="status">{visibles.length} {visibles.length === 1 ? 'documento' : 'documentos'}{filtro ? ` de ${documentos?.length ?? 0}` : ''}</span>
-          {estado && <span>{estado.indexacion.configurada ? `Índice: ${estado.indexacion.destino}` : 'Indexación no configurada'}{estado.simulado ? ' · servicios simulados (demostración)' : ''}</span>}
+          {estado && <span>{estado.indexacion.configurada ? `Índice: ${estado.indexacion.destino}` : 'Indexación no configurada'}{estado.simulado ? ' · servicios simulados (demostración)' : ''}{estado.datosTemporales ? ' · vista previa con datos temporales: los artículos cargados se pierden al reiniciar o redesplegar' : ''}</span>}
         </div>
       </section>
     </div>

@@ -21,6 +21,7 @@ export const estado = {
   faltan: [],
   limites: { preguntaMin: 10, preguntaMax: 2000, archivoMaxBytes: 52428800, formatos: ['json'], esquema: 'kb_article_v2' },
   simulado: false,
+  datosTemporales: false,
   consultaTimeoutMs: 90000,
   cobertura: { politica: 'kd-cobertura-v1', umbralRelevancia: 0.2 },
   usuario: 'operador.tecnico',

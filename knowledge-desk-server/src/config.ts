@@ -13,7 +13,9 @@ export type Modo = 'forusguide' | 'local' | 'sin_configurar'
 
 export interface ForUsGuideConfig { url: string; apiKey: string | null }
 export interface PineconeConfig { apiKey: string; indexHost: string; namespace: string }
-export interface ProveedorConfig { baseUrl: string; apiKey: string | null; embeddingModel: string; chatModel: string }
+// chatReasoningEffort: solo para modelos de razonamiento que aceptan temperature 0
+// únicamente con reasoning_effort "none". Sin valor, el cuerpo del chat no cambia.
+export interface ProveedorConfig { baseUrl: string; apiKey: string | null; embeddingModel: string; chatModel: string; chatReasoningEffort: 'none' | null }
 
 export interface Config {
   host: string
@@ -29,6 +31,9 @@ export interface Config {
   localTopK: number
   maxUploadBytes: number
   demoSimulado: boolean
+  // Vista previa sin almacenamiento persistente: los artículos y el registro se
+  // pierden al reiniciar o redesplegar, y la interfaz lo avisa.
+  datosTemporales: boolean
   operador: string
   identityHeader: string | null
   proxySecreto: string | null
@@ -81,6 +86,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const pineconeKey = texto(env, 'PINECONE_API_KEY')
   const pineconeHost = url(env, 'PINECONE_INDEX_HOST')
   const proveedorUrl = url(env, 'KD_LLM_BASE_URL')
+  const esfuerzo = texto(env, 'KD_CHAT_REASONING_EFFORT')
+  if (esfuerzo !== null && esfuerzo !== 'none') throw new ConfigError('KD_CHAT_REASONING_EFFORT solo admite "none" (o quedar vacío)')
 
   // El tiempo de espera se acota a un rango propuesto (HU01): por debajo de 30 s
   // una síntesis real se corta a menudo y por encima de 120 s la espera deja de
@@ -134,6 +141,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
           apiKey: texto(env, 'KD_LLM_API_KEY'),
           embeddingModel: texto(env, 'KD_EMBEDDINGS_MODEL') ?? '',
           chatModel: texto(env, 'KD_CHAT_MODEL') ?? '',
+          chatReasoningEffort: esfuerzo,
         }
       : null,
     cobertura: {
@@ -144,6 +152,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     localTopK: numero(env, 'KD_LOCAL_TOP_K', 8),
     maxUploadBytes: Math.round(Math.min(200, Math.max(1, numero(env, 'KD_MAX_ARTICULO_MB', 50))) * 1024 * 1024),
     demoSimulado: env.KD_DEMO_SIMULADO === 'true',
+    datosTemporales: env.KD_DATOS_TEMPORALES === 'true',
     operador: texto(env, 'KD_OPERADOR') ?? 'operador.tecnico',
     identityHeader,
     proxySecreto,

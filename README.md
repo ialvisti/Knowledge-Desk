@@ -109,7 +109,9 @@ Cada consulta, carga o reemplazo con servicios reales consume llamadas al modelo
 
 ### Acceso
 
-- En `127.0.0.1` no se exige credencial.
+- Por defecto el servidor escucha en `127.0.0.1` y, si no se configuran
+  credenciales de piloto ni proxy de identidad, no exige credencial. Si se configuran,
+  se exigen también en localhost.
 - Fuera de localhost, el servidor **no arranca** sin una de estas dos opciones:
   - `KD_ACCESO_BASICO`: credenciales de piloto, `usuario:clave` con claves de 12
     caracteres o más, sobre HTTPS.
@@ -127,26 +129,46 @@ Cada consulta, carga o reemplazo con servicios reales consume llamadas al modelo
 
 Resultado del 2026-10-22:
 
-- Servidor: 83 pruebas.
-- Interfaz: 73 pruebas de navegador y E2E.
+- Servidor: 92 pruebas.
+- Interfaz: 77 pruebas de navegador y E2E.
 - Tipos, lint y build correctos.
 - `npm audit`: 0 vulnerabilidades en el servidor y en la interfaz.
 
 Las pruebas usan artículos JSON sintéticos y simuladores locales. No hay corpus privado
 en el repositorio.
 
-## Despliegue en Render (preparado, no creado)
+## Vista previa gratuita en Render (preparada, no creada)
 
-[`render.yaml`](render.yaml) describe un único web service:
+[`render.yaml`](render.yaml) describe un único web service **gratuito y sin disco**:
 
-- Compila la interfaz y arranca `node knowledge-desk-server/src/main.ts`.
-- Salud en `/api/salud`.
-- Disco de 1 GB en `/var/data` (`KD_DATA_DIR`), plan Starter y `autoDeploy: false`.
-- Las variables sensibles van con `sync: false` y se rellenan en el panel de Render.
+- Compila la interfaz y arranca `node knowledge-desk-server/src/main.ts`, con salud en
+  `/api/salud` y `autoDeploy: false`.
+- Fija `KD_MODO=local` (corpus propio cargado desde Documentos) y
+  `KD_LLM_BASE_URL=https://api.openai.com/v1`.
+- Fija los modelos `KD_EMBEDDINGS_MODEL=text-embedding-3-small` y
+  `KD_CHAT_MODEL=gpt-6-luna`, con `KD_CHAT_REASONING_EFFORT=none`, que ese modelo
+  necesita para aceptar `temperature` 0.
+- En el panel de Render (`sync: false`, sin valores en el repositorio) se rellenan
+  `KD_LLM_API_KEY` y `KD_ACCESO_BASICO` (obligatoria: sin ella el servidor no
+  arranca), y opcionalmente `KD_OPERADORES` y `KD_CONTACTO_URL`.
+- **Datos temporales**:
+  - `KD_DATA_DIR=/tmp/knowledge-desk` está en el sistema de archivos efímero de la
+    instancia gratuita. Los artículos cargados, el registro y el índice local se
+    pierden al reiniciar, al redesplegar o cuando el servicio se suspende por
+    inactividad.
+  - `KD_DATOS_TEMPORALES=true` hace que el pie de Documentos lo avise.
+  - Esta marca no cambia el modo ni presenta el servicio como simulado: el proveedor
+    es real y cada carga y consulta consume su cuota.
+- `KD_MAX_ARTICULO_MB=10`, por la memoria de la instancia gratuita.
+- `KD_EJEMPLOS_ARCHIVO=demo/ejemplos-preview.json`: tres preguntas sobre el artículo
+  **sintético** "Política de viáticos internacionales", que no es una política real.
+  - Solo se muestran mientras ese artículo esté cargado: con el corpus vacío o tras un
+    reinicio se ocultan.
+  - Nada se carga solo al arrancar, porque gastaría cuota del proveedor en cada
+    reinicio.
 
-Crear el Blueprint asigna recursos de pago (≈ 7,25 USD/mes según el precio publicado,
-consultado el 2026-10-22) y **requiere aprobación**. Con disco, Render admite una sola
-instancia.
+La persistencia (plan de pago con disco) es un paso futuro opcional, **no
+autorizado**. Ver [NEXT_STEPS.md](NEXT_STEPS.md).
 
 ## Decisiones
 
@@ -159,6 +181,8 @@ instancia.
   sin cuentas propias: credenciales de piloto o proxy de identidad.
 - Un reemplazo es del mismo `article_id`. La eliminación exige confirmación y se
   reintenta si es parcial.
+- El primer despliegue es una vista previa **gratuita** en Render, con datos
+  temporales y modo `local`. No hay recursos de pago.
 
 **Propuestas implementadas, pendientes de aprobación de negocio** (detalle en
 [NEXT_STEPS.md](NEXT_STEPS.md)):
