@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "playwright test"
+    "test": "playwright test --project=escritorio --project=movil --project=e2e",
+    "capturas": "playwright test --project=capturas"
   },
   "dependencies": {
     "@fontsource-variable/material-symbols-outlined": "^5.3.5",
@@ -16,18 +17,18 @@
     "@fontsource/newsreader": "^5.3.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.3"
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.1.0",
-    "oxlint": "^1.79.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "oxlint": "^1.89.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.3.5"
   }
 }

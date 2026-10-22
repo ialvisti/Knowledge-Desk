@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
@@ -122,6 +122,17 @@ describe('Modo local · HU02 y HU03 con embeddings y redacción simulados', () =
     assert.equal(ejemplos.verified, true)
     assert.deepEqual(ejemplos.examples, ['¿Cómo se solicita el reembolso de viáticos internacionales?'])
     assert.deepEqual(ejemplos.rejected.map((item: { reason: string }) => item.reason), ['promete datos personales o financieros'])
+  })
+
+  it('el equipo actualiza los ejemplos editando config/ejemplos.json, sin tocar el código', async () => {
+    const archivo = path.join(dir, 'ejemplos.json')
+    const original = await readFile(archivo, 'utf8')
+    await writeFile(archivo, JSON.stringify({ local: ['¿Qué horario tiene el comedor central?'] }))
+    const despues = new Date(Date.now() + 5000)
+    await utimes(archivo, despues, despues)
+    assert.deepEqual((await app.inject('/api/ejemplos')).json().examples, ['¿Qué horario tiene el comedor central?'])
+    await writeFile(archivo, original)
+    await utimes(archivo, new Date(Date.now() + 10_000), new Date(Date.now() + 10_000))
   })
 
   it('un fallo del proveedor se informa según la etapa: recuperación o redacción', async () => {

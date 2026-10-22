@@ -30,7 +30,8 @@ async function leer(request: IncomingMessage): Promise<string> {
 function primeraOracion(texto: string) {
   const limpio = texto
     .split('\n')
-    .filter(linea => !/^#\s/.test(linea.trim()))
+    // Fuera el título del fragmento y los encabezados de categoría ("## Plazos:").
+    .filter(linea => !/^#\s/.test(linea.trim()) && !/^#{2,6}\s[^.]*:$/.test(linea.trim()))
     .map(linea => linea.replace(/^#{2,6}\s+(Step \d+:\s*|Q:\s*|Issue:\s*)?/, '').replace(/\*\*[^*]+:\*\*\s*/g, '').replace(/^\s*-\s+/, ''))
     .join(' ')
     .replace(/\s+/g, ' ')
@@ -112,9 +113,12 @@ export async function iniciarForUsGuideSimulado(opciones: { pinecone: PineconeSi
       previo.tipos.add(String(registro.chunk_type))
       articulos.set(id, previo)
     }
+    // El chunker repite las reglas de elegibilidad en dos fragmentos: la
+    // respuesta simulada no repite la misma frase.
+    const frases = [...new Set(usados.map(item => primeraOracion(item.registro.content)))].slice(0, 3)
     return responder(200, {
-      answer: `Según la documentación recuperada:\n\n${usados.slice(0, 3).map(item => `- ${primeraOracion(item.registro.content)}`).join('\n')}`,
-      key_points: usados.slice(0, 3).map(item => primeraOracion(item.registro.content)),
+      answer: `Según la documentación recuperada:\n\n${frases.map(frase => `- ${frase}`).join('\n')}`,
+      key_points: frases,
       source_articles: [...articulos].map(([id, info]) => ({ article_id: id, article_title: info.titulo, chunk_types_used: [...info.tipos].join(', '), relevance: 'simulado', used_info: info.score >= 0.2, max_score: Number(info.score.toFixed(4)) })),
       used_chunks: usados.map(({ registro, score }) => ({
         chunk_id: registro._id, score: Number(score.toFixed(4)), chunk_type: registro.chunk_type, chunk_tier: registro.chunk_tier,

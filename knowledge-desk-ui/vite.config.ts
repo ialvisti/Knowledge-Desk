@@ -4,11 +4,11 @@ import { defineConfig, loadEnv } from 'vite'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  // El backend RAG corre en otro puerto. El proxy mantiene las peticiones en el
-  // mismo origen, así que el navegador no necesita CORS para consultar.
-  const target = env.KNOWLEDGE_API_TARGET || 'http://127.0.0.1:8000'
-  // Una síntesis con recuperación tarda unos segundos; el proxy no debe cortar
-  // la conexión antes que el cliente.
+  // La interfaz solo habla con el servidor de Knowledge Desk, que guarda las
+  // credenciales de ForUsGuide, Pinecone o del proveedor. En desarrollo el proxy
+  // mantiene las peticiones en el mismo origen; en producción el propio servidor
+  // sirve la interfaz compilada. Ninguna variable VITE_* existe a propósito.
+  const target = env.KD_SERVER_URL || 'http://127.0.0.1:8787'
   const proxy = {
     '/api': { target, changeOrigin: false, timeout: 180_000, proxyTimeout: 180_000 },
   }

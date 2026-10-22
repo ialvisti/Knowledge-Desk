@@ -274,7 +274,7 @@ describe('HU09 · eliminar un artículo', () => {
     assert.deepEqual(operacion.contadores.embeddings, { hechos: total - 1, total })
     assert.equal(operacion.contadores.fragmentos.hechos, operacion.contadores.fragmentos.total)
     assert.equal(operacion.contadores.registro, 'pendiente')
-    assert.match(operacion.mensaje, /Quedan 1 embeddings asociados.*no se registra como exitosa/)
+    assert.match(operacion.mensaje, /Queda 1 embedding asociado.*no se registra como exitosa/)
     assert.equal(entorno.servicios.registro.documento(id)!.estado, 'bloqueado')
 
     // El embedding que quedó en el índice no puede sustentar una respuesta.
