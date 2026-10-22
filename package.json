@@ -1,0 +1,16 @@
+{
+  "name": "knowledge-desk",
+  "private": true,
+  "description": "Atajos para trabajar con el servidor y la interfaz de Knowledge Desk desde la raíz.",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "instalar": "npm ci --prefix knowledge-desk-server && npm ci --prefix knowledge-desk-ui",
+    "build": "npm run build --prefix knowledge-desk-ui",
+    "start": "npm start --prefix knowledge-desk-server",
+    "simulado": "npm run simulados:demo --prefix knowledge-desk-server",
+    "verificar": "npm run typecheck --prefix knowledge-desk-server && npm run lint --prefix knowledge-desk-server && npm test --prefix knowledge-desk-server && npm run build --prefix knowledge-desk-ui && npm run lint --prefix knowledge-desk-ui && npm test --prefix knowledge-desk-ui",
+    "capturas": "npm run capturas --prefix knowledge-desk-ui"
+  }
+}
