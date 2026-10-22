@@ -96,6 +96,32 @@ describe('Vista previa con datos temporales (KD_DATOS_TEMPORALES)', () => {
   })
 })
 
+describe('Producción · vista previa con acceso público explícito', () => {
+  let dir: string
+  let app: FastifyInstance
+  before(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'kd-produccion-publica-'))
+    const config = loadConfig({ RENDER: 'true', KD_ACCESO_PUBLICO: 'true', KD_DATA_DIR: path.join(dir, 'datos'), KD_UI_DIST: await crearDist(dir) })
+    app = await construirApp(await construirServicios(config), { logger: false })
+  })
+  after(async () => {
+    await app.close()
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('sin credenciales la interfaz y la API responden sin pedir autenticación', async () => {
+    for (const ruta of ['/', '/documentos', '/documentos/DOC-0001?version=1.0', '/assets/app.js']) {
+      const respuesta = await app.inject(ruta)
+      assert.equal(respuesta.statusCode, 200, ruta)
+      assert.equal(respuesta.headers['www-authenticate'], undefined, ruta)
+    }
+    const estado = (await app.inject('/api/estado')).json()
+    assert.equal(estado.accesoControlado, false)
+    assert.equal(estado.puedeAdministrar, true)
+    assert.equal((await app.inject('/api/no-existe')).statusCode, 404)
+  })
+})
+
 describe('Producción · la interfaz compilada también exige acceso', () => {
   let dir: string
   let app: FastifyInstance

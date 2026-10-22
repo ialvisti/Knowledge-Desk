@@ -45,7 +45,7 @@ export function Header() {
           {open && <div id="session-information" className="account-popover" role="region" aria-label="Información de la sesión">
             <p className="eyebrow mb-3">Tu espacio de consulta</p>
             <h2 className="font-editorial text-2xl mb-2">{estado?.usuario ?? 'Usuario interno'}</h2>
-            <p>Acceso limitado al entorno interno. Knowledge Desk no crea cuentas ni guarda un historial de tus preguntas: cada consulta es independiente.</p>
+            <p>{estado?.accesoPublico ? 'Vista previa de acceso abierto, sin inicio de sesión.' : 'Acceso limitado al entorno interno.'} Knowledge Desk no crea cuentas ni guarda un historial de tus preguntas: cada consulta es independiente.</p>
             <div className="account-status">
               <span className="demo-dot" />
               {!estado ? 'Comprobando el servidor…' : estado.puedeAdministrar ? 'Puede administrar documentos' : 'Solo consulta'}

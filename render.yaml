@@ -9,6 +9,7 @@
 # - Modo local: corpus propio, cargado desde la pantalla Documentos, y un
 #   proveedor OpenAI-compatible para embeddings y redacción. Cada carga y cada
 #   consulta llama al proveedor y consume su cuota.
+# - Acceso público (KD_ACCESO_PUBLICO=true): sin inicio de sesión.
 # - No contiene secretos. Las variables con "sync: false" se rellenan en el panel
 #   de Render al crear el Blueprint; nunca se escriben en este archivo.
 # - autoDeploy: false. Nada se despliega sin una acción explícita.
@@ -57,12 +58,12 @@ services:
       # Artículos JSON de hasta 10 MB: la instancia gratuita tiene poca memoria.
       - key: KD_MAX_ARTICULO_MB
         value: "10"
-      # Acceso obligatorio fuera de localhost: credenciales de piloto
-      # usuario:clave[,usuario:clave] (claves de 12+ caracteres).
-      - key: KD_ACCESO_BASICO
-        sync: false
-      # Quiénes pueden cargar, reemplazar y eliminar artículos (opcional).
-      - key: KD_OPERADORES
-        sync: false
+      # Acceso directo sin inicio de sesión, por decisión del usuario para esta
+      # vista previa: cualquiera con la URL consulta y carga, reemplaza o elimina
+      # artículos, y cada uso consume la cuota del proveedor. No se combina con
+      # KD_ACCESO_BASICO, KD_IDENTIDAD_HEADER, KD_PROXY_SECRETO ni KD_OPERADORES:
+      # si alguna está definida en el panel, el servidor no arranca.
+      - key: KD_ACCESO_PUBLICO
+        value: "true"
       - key: KD_CONTACTO_URL
         sync: false

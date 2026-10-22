@@ -22,10 +22,17 @@ Ninguna credencial se guarda en el repositorio: van en `knowledge-desk-server/.e
   - eliminación;
   - consulta sin evidencia tras eliminar.
 
-  Detalle en el [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md).
+  Ese smoke se hizo con acceso protegido. Detalle en el
+  [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md).
 - **No se ejercitaron en vivo**: la eliminación parcial con reintento y el rechazo
   de la credencial del proveedor. Siguen cubiertos solo por las pruebas con
   simuladores.
+- **Acceso sin inicio de sesión** (decisión posterior del usuario):
+  - Implementado con `KD_ACCESO_PUBLICO=true` y probado en local.
+  - **Pendiente**: desplegarlo, retirar `KD_ACCESO_BASICO` y `KD_OPERADORES` del panel
+    de Render y repetir el smoke real sin credenciales.
+  - Mientras la vista previa sea pública, cualquiera con la URL puede cargar,
+    reemplazar o eliminar artículos y consumir la cuota de OpenAI.
 
 ## 1. Corpus real aprobado
 
@@ -123,7 +130,8 @@ el disco y sin `KD_DATOS_TEMPORALES`. También hacen falta:
 - copias de seguridad;
 - la política de retención (#46);
 - la decisión sobre el acceso: credenciales de piloto o proxy de identidad
-  corporativo, y quiénes son operadores.
+  corporativo, y quiénes son operadores. El acceso público de la vista previa
+  (`KD_ACCESO_PUBLICO`) no está pensado para un entorno con datos persistentes.
 
 Con disco, Render admite una sola instancia. Solo se prepara si se aprueba el coste.
 

@@ -11,7 +11,7 @@
 | Modo | `KD_MODO=local`: corpus propio y proveedor OpenAI. No usa ForUsGuide ni Pinecone |
 | Modelos | Chat `gpt-6-luna` con `KD_CHAT_REASONING_EFFORT=none`; embeddings `text-embedding-3-small` |
 | Datos | `KD_DATA_DIR=/tmp/knowledge-desk`, `KD_DATOS_TEMPORALES=true`, JSON de hasta 10 MB |
-| Secretos | La clave del proveedor y las credenciales de acceso están **solo** en el panel de Render. No están en el repositorio ni en este registro; pídelas al responsable del despliegue |
+| Secretos | La clave del proveedor está **solo** en el panel de Render; no está en el repositorio ni en este registro. Las credenciales de piloto del despliegue `9337e67` también estaban solo en el panel. Con el acceso público (ver abajo) dejan de usarse y deben retirarse del panel |
 
 ## Restricciones de esta vista previa
 
@@ -25,13 +25,43 @@
 - **Coste.** El cómputo es del plan gratuito. Cada carga (embeddings) y cada consulta
   (embeddings y chat) llaman a la API real de OpenAI y consumen su cuota. No hay plan
   de cómputo de pago ni disco.
-- **Acceso.** Todo exige las credenciales de piloto (HTTP Basic), salvo `/api/salud`.
+- **Acceso.** En el despliegue `9337e67` todo exigía las credenciales de piloto (HTTP
+  Basic), salvo `/api/salud`. Por decisión posterior del usuario, la vista previa
+  pasa a acceso directo sin inicio de sesión (ver la sección siguiente).
 - **Arranque.** Nada se carga solo al arrancar: el corpus se sube a mano desde
   Documentos.
 
-## Smoke real del 2026-10-22 (18:21–18:25 UTC)
+## Decisión posterior: acceso sin inicio de sesión
 
-Se hizo con un artículo **sintético** (datos ficticios, sin corpus privado) y con
+Después del smoke, el usuario pidió quitar el login de esta vista previa.
+
+- **Configuración.**
+  - `render.yaml` fija `KD_ACCESO_PUBLICO=true` y ya no declara `KD_ACCESO_BASICO` ni
+    `KD_OPERADORES`.
+  - En el panel de Render deben retirarse `KD_ACCESO_BASICO` y `KD_OPERADORES`. El
+    servidor rechaza combinar el acceso público con credenciales, proxy de identidad u
+    operadores, para no mezclar identidades.
+- **Qué cambia.**
+  - Cualquiera con la URL entra directamente, consulta y carga, ve, reemplaza o elimina
+    artículos JSON.
+  - Las operaciones se registran como "Acceso público".
+  - Cada uso consume la cuota de OpenAI.
+- **Qué no cambia.** Plan free sin disco, datos temporales, modo `local`, modelos y
+  límite de 10 MB.
+- **Verificado en local** (con servicios simulados y el build de producción en un
+  navegador sin credenciales):
+  - `/` y `/documentos` responden 200 sin `WWW-Authenticate`;
+  - `/api/estado` devuelve `accesoControlado: false` y `puedeAdministrar: true`;
+  - carga, JSON original, consulta, reemplazo y eliminación funcionan sin
+    credenciales;
+  - credenciales de piloto, proxy de identidad y localhost siguen como antes.
+- **Pendiente**: el smoke real sin credenciales sobre el nuevo despliegue, que se
+  registrará aquí cuando se haga.
+
+## Smoke real del 2026-10-22 (18:21–18:25 UTC), con acceso protegido (histórico)
+
+Se hizo sobre el despliegue `9337e67`, que aún exigía credenciales de piloto. Usó un
+artículo **sintético** (datos ficticios, sin corpus privado) y contaba con
 autorización.
 
 | Comprobación | Resultado |
@@ -79,8 +109,10 @@ Es la suite versionada, con servicios simulados; no llama a servicios reales.
 1. Descarga [`demo/articulo-sintetico-viaticos.json`](../../demo/articulo-sintetico-viaticos.json).
    Es el artículo de la v1.0 del smoke ("Ejemplo SINTÉTICO: viáticos
    internacionales"): datos ficticios, marcados así en el título y la descripción.
-2. Abre <https://knowledge-desk-preview.onrender.com> e identifícate con las
-   credenciales de piloto. Si el servicio dormía, la primera carga tarda.
+2. Abre <https://knowledge-desk-preview.onrender.com>.
+   - Con el acceso público desplegado, entras directamente.
+   - El despliegue `9337e67` pedía las credenciales de piloto.
+   - Si el servicio dormía, la primera carga tarda.
 3. En **Documentos**, pulsa **Explorar archivos** (o arrastra el archivo) y
    selecciónalo.
 4. Espera a que su estado pase a **Indexado**: la lista se actualiza sola.

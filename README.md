@@ -123,11 +123,17 @@ Cada consulta, carga o reemplazo con servicios reales consume llamadas al modelo
 - Por defecto el servidor escucha en `127.0.0.1` y, si no se configuran
   credenciales de piloto ni proxy de identidad, no exige credencial. Si se configuran,
   se exigen también en localhost.
-- Fuera de localhost, el servidor **no arranca** sin una de estas dos opciones:
+- Fuera de localhost, el servidor **no arranca** sin una de estas opciones:
   - `KD_ACCESO_BASICO`: credenciales de piloto, `usuario:clave` con claves de 12
     caracteres o más, sobre HTTPS.
   - Un proxy de identidad corporativo: `KD_IDENTIDAD_HEADER` + `KD_PROXY_SECRETO`.
-- `KD_OPERADORES` limita quién administra los artículos.
+  - `KD_ACCESO_PUBLICO=true`: acceso directo sin inicio de sesión, solo para una vista
+    previa pública decidida de forma explícita.
+    - Cualquiera con la URL consulta y carga, reemplaza o elimina artículos.
+    - Las operaciones se registran como "Acceso público".
+    - No se combina con las dos opciones anteriores ni con `KD_OPERADORES`: si se
+      mezclan, el servidor no arranca.
+- `KD_OPERADORES` limita quién administra los artículos (solo con acceso controlado).
 - `/api/salud` es pública y no expone datos.
 
 ## Verificación
@@ -138,10 +144,10 @@ Cada consulta, carga o reemplazo con servicios reales consume llamadas al modelo
 | `npm run verificar` (raíz) | Lo mismo sin las auditorías. Es lo que ejecuta la CI (`.github/workflows/verificar.yml`, Node 24.14, Chromium, sin secretos). |
 | `scripts\capturas.ps1` | Regenera las 23 capturas de `docs/verificacion/` contra el stack simulado y [`comparacion.html`](docs/verificacion/comparacion.html). `-SoloComparacion` solo regenera la página. |
 
-Resultado del 2026-10-22:
+Resultado local del 2026-10-22, con el acceso público incluido:
 
-- Servidor: 92 pruebas.
-- Interfaz: 77 pruebas de navegador y E2E.
+- Servidor: 98 pruebas.
+- Interfaz: 81 pruebas de navegador y E2E.
 - Tipos, lint y build correctos.
 - `npm audit`: 0 vulnerabilidades en el servidor y en la interfaz.
 
@@ -156,9 +162,16 @@ qué no, y registra la CI en verde del commit desplegado.
 
 ## Vista previa gratuita en Render (desplegada)
 
-<https://knowledge-desk-preview.onrender.com>. Las credenciales de piloto las entrega el
-responsable del despliegue. El [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md)
-recoge el servicio, el commit desplegado, el smoke real y las restricciones.
+<https://knowledge-desk-preview.onrender.com>. El
+[registro del despliegue](docs/verificacion/DEPLOY_RENDER.md) recoge el servicio, el
+commit desplegado, el smoke real y las restricciones.
+
+**Acceso sin inicio de sesión.** Después del primer smoke, que se hizo con acceso
+protegido, el usuario decidió quitar el login de esta vista previa. `render.yaml` fija
+`KD_ACCESO_PUBLICO=true`, de modo que, al desplegar este cambio, se entra
+directamente: cualquiera con la URL consulta y administra artículos, y cada uso
+consume la cuota de OpenAI. El resultado de ese despliegue se registrará en el
+registro cuando se verifique.
 
 **Probarla con el artículo sintético**
 
@@ -181,9 +194,12 @@ vuelve a cargar el archivo. Nada se carga solo.
 - Fija los modelos `KD_EMBEDDINGS_MODEL=text-embedding-3-small` y
   `KD_CHAT_MODEL=gpt-6-luna`, con `KD_CHAT_REASONING_EFFORT=none`, que ese modelo
   necesita para aceptar `temperature` 0.
-- En el panel de Render (`sync: false`, sin valores en el repositorio) se rellenan
-  `KD_LLM_API_KEY` y `KD_ACCESO_BASICO` (obligatoria: sin ella el servidor no
-  arranca), y opcionalmente `KD_OPERADORES` y `KD_CONTACTO_URL`.
+- Fija `KD_ACCESO_PUBLICO=true` (sin inicio de sesión).
+- En el panel de Render (`sync: false`, sin valores en el repositorio) se rellena
+  `KD_LLM_API_KEY` y, opcionalmente, `KD_CONTACTO_URL`.
+- En el panel **no** deben quedar `KD_ACCESO_BASICO`, `KD_IDENTIDAD_HEADER`,
+  `KD_PROXY_SECRETO` ni `KD_OPERADORES`: con el acceso público, el servidor no
+  arrancaría.
 - **Datos temporales**:
   - `KD_DATA_DIR=/tmp/knowledge-desk` está en el sistema de archivos efímero de la
     instancia gratuita. Los artículos cargados, el registro y el índice local se
@@ -213,6 +229,8 @@ autorizado**. Ver [NEXT_STEPS.md](NEXT_STEPS.md).
 - "Abrir el documento" muestra el JSON auténtico de la versión usada.
 - Interfaz y API en el mismo origen. Credenciales solo en el servidor. Acceso interno
   sin cuentas propias: credenciales de piloto o proxy de identidad.
+- Excepción decidida por el usuario: la vista previa de Render no tiene inicio de
+  sesión (`KD_ACCESO_PUBLICO=true`).
 - Un reemplazo es del mismo `article_id`. La eliminación exige confirmación y se
   reintenta si es parcial.
 - El primer despliegue es una vista previa **gratuita** en Render, con datos

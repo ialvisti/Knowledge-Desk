@@ -34,6 +34,8 @@ export interface Config {
   // Vista previa sin almacenamiento persistente: los artículos y el registro se
   // pierden al reiniciar o redesplegar, y la interfaz lo avisa.
   datosTemporales: boolean
+  // Acceso directo, sin credenciales, decidido para una vista previa pública.
+  accesoPublico: boolean
   operador: string
   identityHeader: string | null
   proxySecreto: string | null
@@ -116,12 +118,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new ConfigError('KD_IDENTIDAD_HEADER solo se acepta junto a KD_PROXY_SECRETO (24+ caracteres) que envía el proxy de identidad validado')
   }
 
+  // Acceso público: solo con KD_ACCESO_PUBLICO=true, decidido de forma explícita
+  // para una vista previa. Cualquiera con la URL consulta y administra artículos.
+  // No se combina con credenciales, proxy ni lista de operadores: el acceso
+  // público no identifica a nadie y mezclarlo daría identidades engañosas.
+  const publicoRaw = texto(env, 'KD_ACCESO_PUBLICO')
+  if (publicoRaw !== null && publicoRaw !== 'true' && publicoRaw !== 'false') throw new ConfigError('KD_ACCESO_PUBLICO debe ser true o false')
+  const accesoPublico = publicoRaw === 'true'
+  if (accesoPublico) {
+    const conflictos = ['KD_ACCESO_BASICO', 'KD_IDENTIDAD_HEADER', 'KD_PROXY_SECRETO', 'KD_OPERADORES'].filter(nombre => texto(env, nombre) !== null)
+    if (conflictos.length) throw new ConfigError(`KD_ACCESO_PUBLICO=true no se combina con ${conflictos.join(', ')}: elige acceso público o acceso controlado`)
+  }
+
   const host = texto(env, 'KD_HOST') ?? (env.RENDER ? '0.0.0.0' : '127.0.0.1')
   const loopback = ['127.0.0.1', '::1', 'localhost'].includes(host)
   // Fuera de localhost la API administra documentos y consulta con credenciales
-  // del servidor: no se publica sin control de acceso.
-  if (!loopback && !accesoBasico.length && !identityHeader) {
-    throw new ConfigError(`Exponer Knowledge Desk en ${host} exige KD_ACCESO_BASICO o un proxy de identidad (KD_IDENTIDAD_HEADER + KD_PROXY_SECRETO)`)
+  // del servidor: no se publica sin control de acceso, salvo acceso público explícito.
+  if (!loopback && !accesoBasico.length && !identityHeader && !accesoPublico) {
+    throw new ConfigError(`Exponer Knowledge Desk en ${host} exige KD_ACCESO_BASICO, un proxy de identidad (KD_IDENTIDAD_HEADER + KD_PROXY_SECRETO) o KD_ACCESO_PUBLICO=true`)
   }
 
   return {
@@ -153,7 +167,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     maxUploadBytes: Math.round(Math.min(200, Math.max(1, numero(env, 'KD_MAX_ARTICULO_MB', 50))) * 1024 * 1024),
     demoSimulado: env.KD_DEMO_SIMULADO === 'true',
     datosTemporales: env.KD_DATOS_TEMPORALES === 'true',
-    operador: texto(env, 'KD_OPERADOR') ?? 'operador.tecnico',
+    accesoPublico,
+    // Sin identidad, las operaciones del acceso público se registran como tales,
+    // nunca a nombre de un operador.
+    operador: accesoPublico ? 'Acceso público' : texto(env, 'KD_OPERADOR') ?? 'operador.tecnico',
     identityHeader,
     proxySecreto,
     accesoBasico,

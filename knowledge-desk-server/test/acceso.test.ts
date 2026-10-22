@@ -21,6 +21,90 @@ describe('Despliegue: no se publica sin control de acceso', () => {
     assert.equal(config.host, '0.0.0.0')
     assert.equal(config.port, 10000)
   })
+
+  it('KD_ACCESO_PUBLICO: solo "true" abre el acceso, "false" mantiene la exigencia y otro valor se rechaza', () => {
+    const publico = loadConfig({ RENDER: 'true', KD_ACCESO_PUBLICO: 'true' })
+    assert.equal(publico.host, '0.0.0.0')
+    assert.equal(publico.accesoPublico, true)
+    assert.equal(publico.operador, 'Acceso público')
+    assert.throws(() => loadConfig({ RENDER: 'true', KD_ACCESO_PUBLICO: 'false' }), /exige KD_ACCESO_BASICO/)
+    assert.throws(() => loadConfig({ KD_HOST: '0.0.0.0', KD_ACCESO_PUBLICO: 'si' }), /KD_ACCESO_PUBLICO debe ser true o false/)
+    assert.equal(loadConfig({}).accesoPublico, false)
+  })
+
+  it('el acceso público no se combina con credenciales, proxy ni operadores: el conflicto impide arrancar', () => {
+    const casos: Record<string, string>[] = [
+      { KD_ACCESO_BASICO: 'piloto:clave-de-piloto-segura' },
+      { KD_IDENTIDAD_HEADER: 'x-forwarded-email', KD_PROXY_SECRETO: 'secreto-compartido-del-proxy-0123456789' },
+      { KD_PROXY_SECRETO: 'secreto-compartido-del-proxy-0123456789' },
+      { KD_OPERADORES: 'ialvisti' },
+    ]
+    for (const extra of casos) {
+      assert.throws(() => loadConfig({ KD_HOST: '0.0.0.0', KD_ACCESO_PUBLICO: 'true', ...extra }), new RegExp(`no se combina con ${Object.keys(extra)[0]}`), Object.keys(extra).join())
+    }
+  })
+})
+
+describe('Localhost sin cambios', () => {
+  it('sin configuración de acceso no pide credencial; con KD_ACCESO_BASICO la exige también en localhost', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'kd-localhost-'))
+    try {
+      for (const [extra, esperado] of [[{}, 200], [{ KD_ACCESO_BASICO: 'piloto:clave-de-piloto-segura' }, 401]] as const) {
+        const app = await construirApp(await construirServicios(loadConfig({ KD_DATA_DIR: path.join(dir, 'datos'), KD_UI_DIST: path.join(dir, 'sin-ui'), ...extra })), { logger: false })
+        const estado = await app.inject('/api/estado')
+        await app.close()
+        assert.equal(estado.statusCode, esperado)
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('Acceso público explícito (vista previa sin inicio de sesión)', () => {
+  let entorno: Entorno
+  before(async () => { entorno = await crearEntorno({ KD_HOST: '0.0.0.0', KD_ACCESO_PUBLICO: 'true' }) })
+  after(async () => entorno.cerrar())
+
+  it('el estado no exige acceso, permite administrar y ninguna cabecera cambia la identidad', async () => {
+    for (const headers of [{}, { authorization: basico('alguien', 'clave-cualquiera-123') }, { 'x-forwarded-email': 'ana@empresa.test', 'x-kd-proxy-secreto': 'inventado' }]) {
+      const respuesta = await entorno.app.inject({ url: '/api/estado', headers })
+      assert.equal(respuesta.statusCode, 200)
+      assert.equal(respuesta.headers['www-authenticate'], undefined)
+      const estado = respuesta.json()
+      assert.equal(estado.accesoControlado, false)
+      assert.equal(estado.accesoPublico, true)
+      assert.equal(estado.puedeAdministrar, true)
+      assert.equal(estado.usuario, 'Acceso público')
+      assert.equal(estado.consulta.configurada, true)
+    }
+  })
+
+  it('sin credenciales: carga, original, consulta, reemplazo y eliminación funcionan y se registran como acceso público', async () => {
+    const original = json(articuloSimple('acceso_publico_viaticos', 'Viáticos de prueba', 'El reembolso de viáticos internacionales se solicita en el portal de gastos dentro de los 15 días posteriores al viaje.'))
+    const carga = await entorno.subir('Acceso_Publico.json', original)
+    assert.equal(carga.statusCode, 202)
+    assert.equal(carga.json().operacion.operador, 'Acceso público')
+    await entorno.servicios.gestor.esperarInactividad()
+    const id = carga.json().documento.id
+    assert.equal(entorno.servicios.registro.documento(id)!.estado, 'indexado')
+
+    const archivo = await entorno.app.inject(`/api/documentos/${id}/archivo?version=1.0`)
+    assert.equal(archivo.statusCode, 200)
+    assert.ok(archivo.rawPayload.equals(original))
+
+    const consulta = await entorno.preguntar('¿Cuál es el plazo del reembolso de viáticos internacionales?')
+    assert.equal(consulta.status, 200)
+    assert.equal(consulta.cuerpo.outcome, 'answered')
+
+    const reemplazo = await entorno.subir('Acceso_Publico_v2.json', original, `/api/documentos/${id}/reemplazo`)
+    assert.equal(reemplazo.statusCode, 202)
+    await entorno.servicios.gestor.esperarInactividad()
+    const eliminacion = await entorno.app.inject({ method: 'POST', url: `/api/documentos/${id}/eliminacion`, payload: { confirmado: true } })
+    assert.equal(eliminacion.statusCode, 200)
+    assert.equal(eliminacion.json().operacion.resultado, 'exitoso')
+    assert.equal(eliminacion.json().operacion.operador, 'Acceso público')
+  })
 })
 
 describe('Acceso de piloto (HTTP Basic) y operadores autorizados', () => {

@@ -154,6 +154,25 @@ test.describe('Modo demostración', () => {
   })
 })
 
+test.describe('Acceso público en la vista previa', () => {
+  test('la sesión dice que el acceso es abierto solo cuando el servidor lo declara', async ({ page }) => {
+    await simularServidor(page, { estado: { accesoPublico: true, usuario: 'Acceso público' } })
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Sesión de usuario' }).click()
+    const sesion = page.getByRole('region', { name: 'Información de la sesión' })
+    await expect(sesion).toContainText('Vista previa de acceso abierto, sin inicio de sesión.')
+    await expect(sesion).not.toContainText('Acceso limitado al entorno interno')
+    await expect(sesion).toContainText('Puede administrar documentos')
+  })
+
+  test('sin acceso público mantiene el texto de acceso interno', async ({ page }) => {
+    await simularServidor(page)
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Sesión de usuario' }).click()
+    await expect(page.getByRole('region', { name: 'Información de la sesión' })).toContainText('Acceso limitado al entorno interno.')
+  })
+})
+
 test.describe('Vista previa con datos temporales', () => {
   const aviso = /vista previa con datos temporales: los artículos cargados se pierden al reiniciar o redesplegar/
 

@@ -27,6 +27,7 @@ export const estado = {
   usuario: 'operador.tecnico',
   puedeAdministrar: true,
   accesoControlado: false,
+  accesoPublico: false,
   contactoUrl: 'mailto:area.responsable@empresa.invalid',
   revisionCorpus: 1,
   residuosPendientes: 0,

@@ -165,8 +165,12 @@ completo exige las capacidades de ForUsGuide y la integración en vivo de
 
 ## También verificado (fuera de los criterios)
 
-- **Acceso**: fuera de localhost el arranque exige `KD_ACCESO_BASICO` o un proxy de
-  identidad con secreto (S `acceso.test.ts`).
+- **Acceso**: fuera de localhost el arranque exige una de estas opciones (S
+  `acceso.test.ts`, `produccion.test.ts`):
+  - `KD_ACCESO_BASICO`;
+  - un proxy de identidad con secreto;
+  - `KD_ACCESO_PUBLICO=true`, el acceso sin inicio de sesión decidido para la vista
+    previa. Es incompatible con las otras dos opciones y con `KD_OPERADORES`.
 - **Sincronización de la interfaz**: cada caso tiene su regresión en
   `tests/ui/consulta.spec.ts`.
   - U1: respuestas de un corpus anterior, con reintento limitado y error explícito.

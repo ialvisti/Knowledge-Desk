@@ -80,6 +80,8 @@ export interface EstadoServidor {
   usuario: string
   puedeAdministrar: boolean
   accesoControlado: boolean
+  // Vista previa abierta, sin inicio de sesión (KD_ACCESO_PUBLICO).
+  accesoPublico: boolean
   contactoUrl: string | null
   revisionCorpus: number
   residuosPendientes: number

@@ -268,6 +268,7 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
       usuario,
       puedeAdministrar: !config.operadores.length || config.operadores.includes(usuario),
       accesoControlado: exigeAcceso,
+      accesoPublico: config.accesoPublico,
       contactoUrl: config.contactoUrl,
       revisionCorpus: registro.revision,
       residuosPendientes: gestor.residuosPendientes(),
