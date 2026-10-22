@@ -1,191 +1,247 @@
-# Contrato de `POST /api/v1/knowledge-question`
+# Contratos de Knowledge Desk
 
-Este documento describe el endpoint tal como está en el código de ForUsGuide, no como
-lo describen las propuestas comerciales. Las rutas y líneas se refieren a la copia
-de trabajo de `C:\Users\ialvi\ForUsWorkspace\ForUsGuide` el 2026-10-21. Esa copia
-incluye cambios locales sin commitear, así que las líneas pueden moverse.
+Tres contratos, de afuera hacia adentro:
 
-El backend **no forma parte de este proyecto**. Knowledge Desk lo consume como servicio
-externo (ver [README](../README.md#qué-sigue-dependiendo-de-forusguide)).
+1. **Consulta** (`POST /api/consulta`): lo que consume la interfaz. Es el contrato
+   único de HU10.
+2. **Artículos de conocimiento JSON** (`/api/documentos…`): administración del corpus
+   (HU07 a HU09).
+3. **ForUsGuide** (`POST /api/v1/knowledge-question` y `POST /api/v1/chunks`): el
+   servicio externo que el servidor de Knowledge Desk llama en modo `forusguide`.
+   El navegador nunca lo llama.
 
-## Dónde vive
+Todos los ejemplos usan datos sintéticos. Las rutas de ForUsGuide se refieren a su copia
+de trabajo del 2026-10-21, consultada en solo lectura.
 
-| Pieza | Ubicación en ForUsGuide |
-| --- | --- |
-| Ruta y manejo de errores | `kb-rag-system/api/main.py:1321` (`knowledge_question_endpoint`) |
-| Autenticación | `kb-rag-system/api/main.py:749` (`verify_api_key`) → `kb-rag-system/api/auth.py:87` (`authenticate_principal`) |
-| Modelos | `kb-rag-system/api/models.py:579` (request), `:612` (response), `:282` (`SourceArticle`), `:302` (`UsedChunk`) |
-| Motor | `kb-rag-system/data_pipeline/rag_engine.py:1631` (`ask_knowledge_question`) |
-| Cobertura | `kb-rag-system/data_pipeline/rag_engine.py:6144` (`_calculate_knowledge_confidence`) |
-| Prompt | `kb-rag-system/data_pipeline/prompts.py:774` (`SYSTEM_PROMPT_KNOWLEDGE_QUESTION`) |
-| Cliente en la UI | `knowledge-desk-ui/src/api/knowledgeQuestion.ts` |
+## Contrato de error común
 
-## Arquitectura real
+Todo error del servidor de Knowledge Desk tiene esta forma, con el mismo `request_id`
+en la cabecera `X-Request-ID`:
 
-FastAPI + Pinecone (índice vectorial) + un modelo de lenguaje. La ruta por defecto
-del modelo es OpenAI (`LLM_ROUTE_KNOWLEDGE` y `LLM_ROUTE_DECOMPOSE` = `gpt-5.5` en
-`api/config.py:102-106`); Gemini o Vertex son opcionales y quedan desactivados con
-`LLM_OPENAI_ONLY=true`. En ForUsGuide el despliegue está en GCP (Cloud Run). La
-propuesta comercial menciona además pgvector y Azure; nada de eso aparece en este código.
-
-El índice contiene la base de conocimiento de *Participant Advisory* de ForUsAll:
-artículos sobre planes 401(k), mayormente en inglés. El prompt del sistema está
-escrito para ese dominio ("401(k) and retirement plan assistant for the ForUsAll
-participant advisory team").
-
-## Autenticación: depende de qué versión del backend se use
-
-| Versión del backend | Consulta sin `ticket_id` | Con `ticket_id` |
-| --- | --- | --- |
-| Commit `94aa4bb` (HEAD, 2026-09-02) | **Pública**, sin cabecera | Exige `X-API-Key` |
-| Copia de trabajo con cambios locales sin commitear (`api/main.py` modificado el 2026-10-19) | **Exige `X-API-Key`** | Exige `X-API-Key` |
-
-La UI se escribió el 2026-09-10 contra la versión pública y **no envía `X-API-Key`**.
-Contra la copia de trabajo actual, toda consulta acaba en 401. La prueba que fija el
-comportamiento nuevo es `kb-rag-system/tests/test_public_api_key.py`, que tampoco está
-commiteada.
-
-Cómo se valida la clave: `X-API-Key` se compara en tiempo constante contra
-`API_CLIENT_KEYS` (mapa principal → clave) y, como alternativa heredada, contra
-`API_KEY` (principal `default`). No se pide token de Google ni cuenta de usuario.
-
-## Request
-
-```http
-POST /api/v1/knowledge-question
-Content-Type: application/json
-X-API-Key: <solo con la versión que la exige>
-
-{ "question": "¿Qué es una distribución mínima requerida (RMD) y cuándo empieza?" }
-```
-
-| Campo | Tipo | Regla en el backend | Qué hace la UI |
-| --- | --- | --- | --- |
-| `question` | string | 10 a 2000 caracteres; se recorta y no puede quedar vacía | Recorta, cuenta puntos de código y bloquea antes de enviar |
-| `ticket_id` | string opcional | DevRev DON o display id; activa el registro durable de evaluación de tickets | **No lo envía y no debe hacerlo**: es del flujo de tickets |
-
-Cabeceras opcionales del backend: `X-Correlation-ID` (se devuelve si cumple
-`[A-Za-z0-9._:-]{1,128}`) e `Idempotency-Key` (solo tiene efecto con `ticket_id`).
-Toda respuesta trae `X-Request-ID`.
-
-## Response 200
-
-```jsonc
+```json
 {
-  "answer": "texto con markdown ligero",
-  "key_points": ["..."],
-  "source_articles": [
-    { "article_id": "...", "article_title": "...", "chunk_types_used": "faqs, steps",
-      "relevance": "...", "used_info": true, "max_score": 0.60 }
-  ],
-  "used_chunks": [
-    { "chunk_id": "...", "score": 0.60, "chunk_type": "faqs", "chunk_tier": "low",
-      "article_id": "...", "article_title": "...", "content_preview": "...", "content": "..." }
-  ],
-  "confidence_note": "well_covered | partially_covered | limited_coverage",
-  "metadata": { /* ver abajo */ }
+  "status": "error",
+  "code": "RETRIEVAL_ERROR",
+  "message": "Ocurrió un problema al recuperar la información. Inténtalo de nuevo en unos minutos.",
+  "details": { "retryable": true },
+  "request_id": "req-c92e51f8"
 }
 ```
 
-Claves de `metadata` en una respuesta normal: `chunks_used`, `context_tokens`,
-`response_tokens`, `prompt_tokens`, `completion_tokens`, `total_tokens`, `model`,
-`provider`, `sub_queries`, `unique_articles`, `relevant_articles`, `coverage_gaps`,
-`account_recovery_policy`, `per_query_scores`. La UI solo usa `chunks_used`,
-`unique_articles`, `model`, `sub_queries` y `error`.
+- `request_id` tiene la forma `req-` + 8 hexadecimales. El navegador lo propone en
+  `X-Request-ID`. Si no es válido, el servidor genera otro.
+- `message` está escrito para quien usa la interfaz. Nunca incluye cuerpos de servicios
+  externos, claves, hosts ni rutas internas.
+- `details` solo lleva datos no sensibles: `retryable`, el motivo de una validación,
+  la ruta JSON de un artículo inválido, el estado HTTP de un servicio externo y
+  similares.
 
-### Respuestas 200 que no son respuestas
+| Código | HTTP | Cuándo |
+| --- | --- | --- |
+| `VALIDATION_ERROR` | 422 | Pregunta vacía, de menos de 10 o más de 2000 caracteres, o cuerpo mal formado (`details.motivo`: `vacia`, `corta`, `larga`, `formato`). Se valida **antes** de llamar a cualquier servicio. |
+| `RETRIEVAL_ERROR` | 502 | Falló la recuperación (ForUsGuide `timeout`, `rate_limit`, `server_error`, `client_error`; o embeddings de la pregunta en modo local). |
+| `VECTOR_DB_UNAVAILABLE` | 503 | Base vectorial no disponible (ForUsGuide `circuit_open`, `transport`, `503 RAG Engine not initialized`; o índice local). |
+| `AI_PROVIDER_ERROR` | 502 | Falló el proveedor que redacta (excepción `unknown` de ForUsGuide, respuesta fija "Unable to generate…", modelo local sin texto). |
+| `TIMEOUT` | 504 | Se superó `KD_CONSULTA_TIMEOUT_MS` (30 a 120 s; por defecto 90 s). No se presenta ninguna respuesta parcial. |
+| `UPSTREAM_UNREACHABLE` | 503 | No se pudo conectar con ForUsGuide. |
+| `UPSTREAM_AUTH_ERROR` | 502 | ForUsGuide rechazó la credencial del servidor (401 o 403). No es reintentable. |
+| `UPSTREAM_ERROR` | 502 | Otro error de ForUsGuide o una respuesta con formato inesperado. |
+| `INTEGRATION_NOT_CONFIGURED` | 503 | El servidor arrancó sin `KD_MODO` o sin la integración necesaria. Nunca inventa una respuesta. |
+| `CONTENT_UNAVAILABLE` | 409 | La evidencia incluye una versión no servible (procesando, bloqueada, reemplazada o retirada). Se comprueba después del último `await`. |
+| `UNSUPPORTED_FORMAT` | 415 | El archivo no es `.json`. |
+| `EMPTY_FILE` | 400 | Archivo vacío o solo espacios. |
+| `FILE_TOO_LARGE` | 413 | Supera `KD_MAX_ARTICULO_MB` (por defecto 50 MB). |
+| `INVALID_ARTICLE` | 422 | No es UTF-8, no es JSON o no cumple kb_article_v2. `details.ruta` indica la ruta exacta (por ejemplo `details.steps[2].description`). |
+| `DUPLICATE_DOCUMENT` | 409 | Ya hay un documento vigente con ese nombre de archivo. |
+| `DUPLICATE_ARTICLE` | 409 | Ya existe ese `article_id`, en Knowledge Desk o en el corpus de ForUsGuide. |
+| `ARTICLE_MISMATCH` | 409 | El reemplazo trae otro `article_id`. |
+| `DOCUMENT_BUSY` | 409 | Ya hay otra operación en curso sobre el documento. |
+| `INVALID_STATE` | 409 | El documento no admite esa acción en su estado. |
+| `CONFIRMATION_REQUIRED` | 400 | Eliminación sin `{"confirmado": true}`. |
+| `INDEX_NOT_CONFIGURED` | 503 | Se intentó indexar sin índice configurado. |
+| `FILE_REQUIRED` | 400 | Petición multipart sin archivo. |
+| `NOT_FOUND` / `SOURCE_NOT_AVAILABLE` | 404 | Recurso o fuente inexistente. |
+| `ACCESS_DENIED` | 401 | Sin credencial de piloto ni identidad de proxy válida. |
+| `OPERATOR_REQUIRED` | 403 | El usuario no está en `KD_OPERADORES`. |
+| `INTERNAL_ERROR` | 500 | Error no controlado. Sin detalles internos. |
 
-El motor atrapa sus propios fallos y devuelve 200. Hay cuatro casos:
+## 1. `POST /api/consulta` (HU01–HU05, HU10)
 
-| Caso | `answer` (fijo, en inglés) | Marca | La UI hoy |
-| --- | --- | --- | --- |
-| Excepción en el motor | `An internal error occurred while processing your question.` | `metadata.error = "knowledge_question_failed"`, `retrieval_failure_kind`, `retrieval_retryable` | Lo trata como fallo y ofrece reintentar ✅ |
-| Sin fragmentos recuperados | `I couldn't find relevant information in the knowledge base to answer this question.` | `confidence_note = limited_coverage`, `chunks_used = 0`, sin `error` | Lo pinta como respuesta con "Cobertura limitada" |
-| El modelo devuelve contenido vacío | `Unable to generate a response. Please try again or contact Support.` | Ninguna; `model = null` | Lo pinta como respuesta ⚠️ |
-| El modelo devuelve JSON inválido | `Unable to generate a structured answer.` | Ninguna | Lo pinta como respuesta ⚠️ |
+```http
+POST /api/consulta
+Content-Type: application/json
+X-Request-ID: req-7f3a9c2e
 
-`retrieval_failure_kind` toma uno de estos valores: `timeout`, `transport`,
-`rate_limit`, `server_error`, `circuit_open`, `client_error` o `unknown`.
+{ "question": "¿Cuál es el procedimiento para reembolso de viáticos internacionales?" }
+```
 
-## Errores HTTP
+Solo viaja la pregunta. Cualquier otro campo (`ticket_id`, contexto anterior) se
+ignora y no se reenvía. El servicio no guarda contexto entre solicitudes.
 
-Las `HTTPException` del backend salen con la forma
-`{"error": "http_error", "message": <detalle>, "request_id": "..."}`. La clave `detail`
-solo aparece si el detalle es un objeto. La UI lee únicamente `detail`, así que para
-401, 403, 404 y 500 pierde `message` y muestra "La API respondió con un error N". El 503
-tiene mensaje propio en el cliente, que no depende del cuerpo.
+Respuesta 200 (con el texto recortado):
 
-| Estado | Cuándo | Cuerpo real | Mensaje en la UI |
-| --- | --- | --- | --- |
-| 401 | Falta `X-API-Key` (copia de trabajo) | `message: "API key missing. Include 'X-API-Key' header."` | "La API respondió con un error 401." |
-| 403 | Clave inválida | `message: "Invalid API key"` | "La API respondió con un error 403." |
-| 422 | Validación de Pydantic | `{"detail": [{"msg": "...", ...}]}` (FastAPI, mensajes en inglés) | Concatena los `msg` |
-| 500 | Excepción en el handler | `message: "An error occurred while processing the knowledge question."` | "La API respondió con un error 500." |
-| 503 | El motor no se inicializó al arrancar (`app.state.rag_engine` vacío) | `message: "RAG Engine not initialized"` | "El servicio de conocimiento no está disponible ahora mismo." |
-| 404 | El proceso corre con `APP_ROLE` distinto de `producer` | `{"error": "http_error", "message": "Not Found"}` | "La API respondió con un error 404." |
-| 409 | Solo con `ticket_id` e `Idempotency-Key` repetida | — | No aplica |
+```jsonc
+{
+  "status": "ok",
+  "request_id": "req-7f3a9c2e",
+  "question": "¿Cuál es el procedimiento para reembolso de viáticos internacionales?",
+  "outcome": "answered",                 // o "insufficient"
+  "answer": "Según la documentación recuperada: …",   // null si outcome = insufficient
+  "key_points": ["…"],                   // [] si outcome = insufficient
+  "coverage": {
+    "level": "alta",                     // alta | parcial | baja | sin_evidencia
+    "label": "Cobertura alta",
+    "explanation": "Varias fuentes aprobadas tratan directamente tu consulta.",
+    "sufficient": true,
+    "relevant_fragments": 5, "total_fragments": 6, "documents": 1,
+    "policy": "kd-cobertura-v1",
+    "basis": "motor"                     // motor (ForUsGuide) o politica (local)
+  },
+  "sources": [{
+    "id": "kd_doc0006_v1_0",             // ID interno de la versión, o article_id de ForUsGuide
+    "kind": "document",                  // document (Knowledge Desk) | external_article (ForUsGuide)
+    "title": "Política de viáticos internacionales",   // metadata.title del JSON
+    "file_name": "Politica_Viaticos_v3.2.json",
+    "article_id": "politica_viaticos_internacionales", // metadata.article_id canónico
+    "href": "/documentos/DOC-0006?version=1.0",        // abre el JSON de ESA versión
+    "document_id": "DOC-0006", "version": "1.0",
+    "location": "details.business_rules[0]",           // rutas JSON resumidas
+    "affinity": 0.45, "fragment_count": 4,
+    "fragments": [{ "id": "kd_doc0006_v1_0_chunk_1", "affinity": 0.45, "type": "eligibility",
+                    "paths": ["details.business_rules[0]"], "operational": false, "content": "…" }]
+  }],
+  "found_documents": [],                 // con insufficient: lo encontrado, sin presentarlo como sustento
+  "contradictions": [],                  // [{ description, source_ids }] para revisión humana
+  "retrieval": { "fragments_retrieved": 6, "articles_consulted": 1, "model": "…", "sub_queries": ["…"], "generated": true },
+  "engine": "forusguide",
+  "elapsed_ms": 1840,
+  "corpus_revision": 7
+}
+```
 
-Errores de red y tiempo agotado: la UI aborta a los `VITE_API_TIMEOUT_MS` (120 000 ms
-por defecto) y el proxy de Vite corta a los 180 000 ms. El backend no tiene un límite
-propio documentado para esta ruta; no se verificó.
+Reglas que el servidor garantiza:
 
-## Cobertura (`confidence_note`)
+- **Fuentes.** Solo artículos con fragmentos usados en el contexto y una afinidad igual o
+  superior a `KD_COBERTURA_MIN` (0,20). Los recuperados y descartados no aparecen. El
+  mismo texto de un artículo cuenta una sola vez: el chunker repite las reglas de
+  elegibilidad en dos fragmentos.
+- **Cobertura `kd-cobertura-v1`.** Es una regla reproducible y **no** es una
+  probabilidad de acierto. Si el motor declara su nivel (ForUsGuide `confidence_note`),
+  se respeta. Si no, se calcula a partir de la media de las 5 mejores afinidades, de
+  los fragmentos relevantes y de los vacíos declarados (ver
+  `knowledge-desk-server/src/consulta/coverage.ts`). Solo `alta` y `parcial` son
+  suficientes.
+- **Con cobertura insuficiente** no se presenta texto generado: `answer` es null y
+  `key_points` y `sources` vienen vacíos.
+- **Modo local.** Una cita a una sección inexistente, una afirmación sin cita o un punto
+  clave sin fuente válida degradan la respuesta a `insufficient`.
+- **`corpus_revision`.** Es la revisión que se comprobó después del último `await`. La
+  interfaz la usa para no reutilizar respuestas de un corpus anterior: si llega una
+  revisión menor que la conocida, repite la consulta (como máximo 2 veces) y, si
+  persiste, informa `CORPUS_CHANGED` sin mostrar la respuesta.
 
-La calcula el motor con dos señales. **No es una probabilidad de que la respuesta sea
-correcta.**
+## 2. Artículos de conocimiento JSON (HU07–HU09)
 
-1. Señal principal: `coverage_gaps`, temas que el modelo declara ausentes del contexto.
-   - 3 o más → `limited_coverage`
-   - 2 → `partially_covered`
-   - 1 → `partially_covered` si además hay buena recuperación; si no, `limited_coverage`
-2. Sin huecos declarados, decide la recuperación: media de los 5 mejores *scores*
-   (`avg`) y número de tipos de alto valor presentes (`business_rules`, `eligibility`,
-   `steps`, `faqs`, `guardrails`).
-   - `avg ≥ 0.35` y ≥ 3 tipos → `well_covered`
-   - `avg ≥ 0.22` y ≥ 2 tipos → `partially_covered`
-   - en otro caso → `limited_coverage`
+Knowledge Desk administra **solo** artículos JSON kb_article_v2, el formato de los
+artículos de ForUsGuide:
 
-Un artículo de `source_articles` tiene `used_info = true` si su mejor fragmento alcanza
-o supera `KQ_SOURCE_MIN_SCORE = 0.20` (`score >= 0.20`).
+```jsonc
+{
+  "metadata": {
+    "article_id": "politica_viaticos_internacionales",  // obligatorio, ≤ 200 caracteres
+    "title": "Política de viáticos internacionales",    // obligatorio, ≤ 500 caracteres
+    "record_keeper": null,                              // obligatorio, puede ser null (= "all")
+    "plan_type": null,                                  // obligatorio, puede ser null (= "all")
+    "description": "…", "scope": "internal", "tags": [], "subtopics": [], "topic": "…",
+    "schema_version": "kb_article_v2"
+  },
+  "details": {
+    "critical_flags": {}, "business_rules": [], "fees": [], "steps": [], "common_issues": [],
+    "examples": [], "additional_notes": [], "faq_pairs": [], "definitions": [], "guardrails": {},
+    "references": {}, "required_data": {}, "decision_guide": {}, "response_frames": {}
+  }
+}
+```
 
-Parámetros de recuperación (`rag_engine.py:1536-1543`): hasta 3 subconsultas más la
-pregunta original, `top_k = 15` por consulta, presupuesto de contexto de 4000 tokens y
-un máximo de 6 fragmentos por artículo.
+- **Validación** (`src/documents/articulo.ts`): UTF-8 estricto (se admite BOM), JSON
+  válido, raíz con `metadata` y `details`, y tipos de cada sección por ruta. Los
+  opcionales ausentes no rechazan el artículo. `summary` (legado) y las claves raíz
+  ajenas se conservan en el original con un aviso y no se indexan.
+- **Contenido útil**: hacen falta al menos 40 letras en los campos que de verdad se
+  indexan. Ni las claves ajenas al esquema, ni las banderas, ni los encabezados cuentan.
+  Un artículo sin contenido útil queda en **Error** y nunca se publica.
+- **Fragmentación** (`src/documents/chunker.ts`, regla `forusguide-kbchunker-port-v1`):
+  es un port del `KBChunker` de ForUsGuide (`kb-rag-system/data_pipeline/chunking.py`).
+  Conserva el mismo orden, texto, `chunk_type`, `chunk_category` y nivel, los pasos y
+  FAQ de tres en tres y el `content_hash` md5 de 8 caracteres. Cada fragmento añade sus
+  rutas JSON (`kd_json_paths`). Un fragmento de más de 4000 caracteres se divide en
+  partes sin perder texto. El encabezado repetido se acota a 160 caracteres, de modo
+  que categorías o títulos enormes no bloquean la división.
+- **Registro en el índice**: `article_id` es el ID **interno** de la versión
+  (`kd_doc0006_v1_0`) y aísla versiones sin pisar los IDs de ForUsGuide. El ID canónico
+  viaja en `source_article_id`; `record_keeper` y `plan_type` nulos se guardan como
+  `"all"`. Los textos libres de los metadatos se acotan por el límite de 40 KB de
+  Pinecone.
+- **Original intacto**: los bytes cargados se guardan sin modificar. `GET …/archivo`
+  los devuelve tal cual, con `X-Content-SHA256`, y el visor los verifica en el
+  navegador.
 
-## Lo que la UI deja fuera
+| Método y ruta | Uso |
+| --- | --- |
+| `GET /api/documentos` | Lista con `nombre`, `titulo`, `articuloId`, `estado` (`indexado`, `procesando`, `error`, `eliminando`, `bloqueado`), `fragmentos`, `fechaCarga` y `revisionCorpus`. |
+| `POST /api/documentos` (multipart `archivo`) | Carga (202). Valida, guarda el original y procesa en segundo plano: lectura → fragmentación → embeddings → verificación de IDs y búsqueda → activación. |
+| `POST /api/documentos/:id/reemplazo` | Reemplazo por una versión del **mismo** `article_id`. La versión vigente sirve hasta que la nueva queda verificada. Si algo falla, no se publica nada de la nueva. |
+| `POST /api/documentos/:id/reintento` | Reprocesa un documento en Error que aún no tiene versión activa. |
+| `POST /api/documentos/:id/eliminacion` `{"confirmado": true}` | Retira fragmentos, embeddings y registro. Los contadores son **medidos**: si queda algo, es `fallido_parcial`, el documento queda bloqueado y se puede reintentar. |
+| `GET /api/documentos/:id?version=x` | Detalle: identidad del artículo, SHA-256, fragmentos con tipo, nivel, rutas y parte, versiones y operaciones. |
+| `GET /api/documentos/:id/archivo?version=x[&descargar=1]` | El JSON original exacto (`application/json; charset=utf-8`). |
+| `GET /api/operaciones/:id` | Registro técnico: pasos, operador, fechas, resultado y contadores. |
+| `GET /api/fuentes/:articleId` | Si el artículo es de Knowledge Desk, redirige a su documento. Si es de ForUsGuide, devuelve **sus fragmentos indexados** (`origen: "fragmentos_indexados"`), porque ForUsGuide no expone el JSON original. |
 
-`src/lib/answerView.ts` oculta los fragmentos operativos (`critical_flags`,
-`decision_guide`, `guardrails`, `response_frames` y `required_data*`). Por eso el
-número de fragmentos de una ficha de fuente puede ser menor que `chunks_used`. Ojo:
-`guardrails` cuenta para la cobertura aunque no se muestre.
+## 3. ForUsGuide como servicio externo (modo `forusguide`)
 
-## Efectos y costes de cada consulta
+El servidor de Knowledge Desk llama a ForUsGuide. El navegador no.
 
-- Sin `ticket_id` no se escribe nada en el registro de tickets. Lo comprueba
-  `tests/test_direct_ticket_evaluation.py::test_general_knowledge_call_without_ticket_remains_outside_ticket_ledger`.
-- Si el backend tiene `ENABLE_EXECUTION_LOGGING=true`, guarda la pregunta y la
-  respuesta en su registro de ejecuciones (GCS).
-- Cada consulta pasa normalmente por dos llamadas al modelo (descomposición y
-  síntesis) y hasta 4 búsquedas en Pinecone (el backend tiene una caché de consultas
-  que no se analizó). Tiene coste real: no se debe usar en pruebas automáticas por
-  defecto.
+```http
+POST {FORUSGUIDE_API_URL}/api/v1/knowledge-question
+Content-Type: application/json
+X-API-Key: {FORUSGUIDE_API_KEY}        ← solo en el servidor; nunca VITE_*, nunca en el navegador
+X-Correlation-ID: req-7f3a9c2e
 
-## Dependencias de configuración del backend
+{ "question": "…" }
+```
 
-Viven en `kb-rag-system/.env` de ForUsGuide. No se copian aquí y nunca deben
-copiarse: `PINECONE_API_KEY`, `OPENAI_API_KEY` (o `GEMINI_API_KEY` /
-`USE_VERTEX_AI` + `GCP_PROJECT`), `API_KEY` / `API_CLIENT_KEYS`, `ENVIRONMENT`,
-`ALLOWED_ORIGINS` (CORS; en `production` se descarta `*`) y `APP_ROLE=producer`.
+- Nunca se envía `ticket_id`, que pertenece al flujo de tickets de ForUsGuide.
+- La copia de trabajo de ForUsGuide (2026-10-21) exige `X-API-Key`
+  (`kb-rag-system/api/main.py`, `verify_api_key`). La clave la emite quien opera ese
+  backend (`API_CLIENT_KEYS`).
+- Los errores HTTP de ForUsGuide (`{error, message, request_id}`) se traducen así:
+  401 o 403 → `UPSTREAM_AUTH_ERROR`; 422 → `VALIDATION_ERROR`;
+  503 → `VECTOR_DB_UNAVAILABLE`; los demás → `UPSTREAM_ERROR`. Su `message` no se
+  reenvía.
+- Respuestas 200 que **no** son respuestas:
 
-`GET /health` es público. Responde `status: healthy | degraded`, `pinecone_connected`,
-`openai_configured` y `total_vectors`. Si Pinecone no se inicializó, responde 503.
+  | ForUsGuide | Knowledge Desk |
+  | --- | --- |
+  | `metadata.error` con `retrieval_failure_kind` (`timeout`, `rate_limit`, `server_error` o `client_error`) | `RETRIEVAL_ERROR` |
+  | `metadata.error` con `circuit_open` o `transport` | `VECTOR_DB_UNAVAILABLE` |
+  | `metadata.error` con `unknown` | `AI_PROVIDER_ERROR` (inferido) |
+  | `answer` = "Unable to generate a response…" o "Unable to generate a structured answer." | `AI_PROVIDER_ERROR` |
+  | `answer` = "I couldn't find relevant information…" | `outcome: insufficient`, `sin_evidencia` |
 
-## Pruebas que fijan el contrato
+- `used_chunks` es la evidencia, y `confidence_note` el nivel del motor
+  (`well_covered` → alta, `partially_covered` → parcial, `limited_coverage` → baja).
+  `metadata.model`, `sub_queries`, `chunks_used` y `unique_articles` alimentan los
+  metadatos de procesamiento.
+- Los documentos se indexan en el **mismo** índice Pinecone y namespace que lee
+  ForUsGuide (`PINECONE_NAMESPACE`, por defecto `kb_articles`), con embeddings
+  integrados (`upsertRecords` con el campo `content`). ForUsGuide los recupera como a
+  su propio corpus. El servidor excluye en cada respuesta las versiones no servibles y
+  limpia los residuos.
+- `POST /api/v1/chunks` `{article_id, limit}` se usa para mostrar los fragmentos
+  indexados de un artículo externo.
 
-En la UI (este proyecto), con el endpoint simulado: `knowledge-desk-ui/tests/app.spec.ts`
-y `tests/fixtures.ts`. Las fixtures son una copia recortada de una respuesta real,
-pero sus errores usan `{detail: "..."}`, una forma que el backend real solo emite en 422.
-
-En el backend (ForUsGuide; no se ejecutaron aquí): `tests/test_public_api_key.py`,
-`tests/test_direct_ticket_evaluation.py`, `tests/test_rag_engine.py::test_knowledge_question_preserves_closed_retrieval_taxonomy`
-y `tests/test_api.py`.
+Efectos y costes: cada consulta real a ForUsGuide hace llamadas al modelo y a
+Pinecone, y tiene coste. Si ForUsGuide tiene `ENABLE_EXECUTION_LOGGING=true`, guarda la
+pregunta y la respuesta. Ninguna prueba automática de este proyecto llama a ForUsGuide
+ni a Pinecone reales: usan los simuladores de `knowledge-desk-server/test/support/`.

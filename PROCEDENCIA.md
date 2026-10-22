@@ -39,22 +39,45 @@ solo cambia la carpeta.
 
 | Archivo | Cambio | Motivo |
 | --- | --- | --- |
-| `knowledge-desk-ui/run-local.sh` | Ya no busca el backend en `../../kb-rag-system`, que en el destino no existe. Exige `KNOWLEDGE_API_DIR` y, si falta, termina con un mensaje. El resto del script no cambia. | Sin la adaptación, el script fallaba al arrancar con un `cd` sin explicación. |
+| `knowledge-desk-ui/run-local.sh` | En la extracción dejó de buscar el backend en `../../kb-rag-system` y pasó a exigir `KNOWLEDGE_API_DIR`. **Se retiró en la ampliación**: la interfaz ya no habla con ForUsGuide, sino con el servidor propio, y los scripts de `scripts/` la sustituyen. | En el destino no existe `kb-rag-system`. |
 
 ## Creado en la extracción
 
 `README.md`, `NEXT_STEPS.md`, `PROCEDENCIA.md`, `.gitignore` y
-`docs/CONTRATO_KNOWLEDGE_QUESTION.md`.
+`docs/CONTRATO_KNOWLEDGE_QUESTION.md`. Los cinco se reescribieron en la ampliación.
 
 ## Excluido
 
 | Qué | Motivo |
 | --- | --- |
-| `node_modules/`, `dist/`, `test-results/`, `playwright-report/` | Artefactos regenerables. No existían en el origen; los creados al verificar se borraron. |
-| Archivos `.env` | Secretos. La UI no tenía `.env`. Los `.env` de ForUsGuide (raíz y `kb-rag-system/`) apuntan a credenciales privadas y no se leyeron ni copiaron. |
-| `.git` | No se inicializó git en el destino. |
-| `kb-rag-system/` (backend, scripts de ingesta, `ui/knowledge.html` heredada) | Se consume como servicio externo. Ver la sección "Qué sigue dependiendo de ForUsGuide" del README. |
+| `node_modules/`, `dist/`, `test-results/`, `playwright-report/` | Artefactos regenerables, ignorados por Git. |
+| Archivos `.env` | Secretos. Los `.env` de ForUsGuide (raíz y `kb-rag-system/`) no se leyeron ni copiaron. El destino solo versiona `.env.example`, sin valores. |
+| Historial de Git del origen | No se copió. El destino tiene su propio repositorio, cuya línea base es `de2b21a`. |
+| `kb-rag-system/` (backend, scripts de ingesta, `ui/knowledge.html` heredada) | ForUsGuide sigue siendo un servicio externo. Knowledge Desk tiene ahora su propio servidor, que lo consume en modo `forusguide` (ver la ampliación). |
 | Tickets, DevRev, n8n, `PA/`, `infra/` (Terraform), `endpoint-planning/`, `ticket-handler-planning/`, `tickets-development-plan/`, `docs/` del origen | Ajenos al alcance de Knowledge Desk. |
+| Artículos del corpus de ForUsGuide | No se copiaron. Las pruebas y la demostración usan artículos JSON sintéticos. |
+
+## Ampliación posterior (2026-10-21 y 2026-10-22)
+
+Después de la extracción se implementaron HU01 a HU10 sobre **artículos de
+conocimiento JSON** (kb_article_v2). Las imágenes y los PDF de `docs/negocio/` se usaron
+como referencia de diseño, sin modificarlos.
+
+| Parte | Qué es |
+| --- | --- |
+| `knowledge-desk-server/` | Servidor nuevo (Node 24 con TypeScript nativo y Fastify 5): consulta (`forusguide`, `local` o sin configurar), pipeline de artículos JSON (validación, fragmentación, indexación verificada, reemplazo y eliminación con fallo parcial), registro en disco, control de acceso y la interfaz compilada en el mismo origen. |
+| `knowledge-desk-server/src/documents/chunker.ts` | **Port** escrito de nuevo en TypeScript del `KBChunker` de ForUsGuide (`kb-rag-system/data_pipeline/chunking.py`, leído en solo lectura). Reproduce sus formatos de texto, tipos, categorías y niveles para que los fragmentos compitan en igualdad en el índice compartido. Las diferencias deliberadas están documentadas en la cabecera del archivo. |
+| Validación kb_article_v2 | Sigue los campos que exige el procesador de ForUsGuide (`article_processor.py`, leído en solo lectura) y las variantes del esquema. |
+| `knowledge-desk-ui/` | Interfaz rehecha sobre la extraída: consulta conectada al servidor propio, Documentos real, visor del JSON auténtico y fuentes externas. Se retiraron la maqueta de Documentos y el cliente directo a ForUsGuide. |
+| Pruebas | `node --test` en el servidor y Playwright en la interfaz (escritorio, móvil, E2E y capturas). Simuladores locales de ForUsGuide y Pinecone y artículos JSON sintéticos. Ninguna prueba llama a servicios reales. |
+| Operación | `scripts/` (Windows), `.github/workflows/verificar.yml`, `render.yaml` (preparado, sin recursos creados) y `docs/verificacion/` (matriz de 51 criterios y capturas). |
+
+ForUsGuide (`C:\Users\ialvi\ForUsWorkspace\ForUsGuide`) y los documentos de negocio
+originales se consultaron **solo en lectura** durante toda la ampliación.
+
+Repositorio de destino: <https://github.com/ialvisti/Knowledge-Desk.git>. La línea
+base de la extracción es `de2b21a`. Los commits y envíos posteriores los gestiona el
+responsable del repositorio.
 
 ## El origen no se modificó
 
