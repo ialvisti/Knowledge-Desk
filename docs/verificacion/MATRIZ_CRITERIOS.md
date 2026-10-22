@@ -31,8 +31,14 @@ Valores de estado:
 - **Condicionado**: depende de una capacidad o de una verificación del servicio
   externo. La celda dice cuál.
 
-Ningún criterio se verificó contra ForUsGuide, Pinecone ni un modelo reales: no se
-llamó a servicios de pago ni de producción.
+Los estados de esta matriz se apoyan en la suite de pruebas versionada (la que ejecuta
+la CI), con servicios simulados: ninguna de esas pruebas llama a ForUsGuide, Pinecone
+ni a un modelo reales.
+
+Aparte de esa suite, el 2026-10-22 se hizo un smoke **operacional real** con
+Playwright en modo `local` (vista previa en Render, OpenAI, artículo sintético). Está en el
+[registro del despliegue](DEPLOY_RENDER.md). No cambia ningún estado de la matriz y no
+toca el modo `forusguide`.
 
 Evidencia:
 

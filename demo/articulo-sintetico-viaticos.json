@@ -1,0 +1,85 @@
+{
+  "metadata": {
+    "article_id": "preview_sintetico_viaticos_20261022",
+    "title": "Ejemplo SINTÉTICO: viáticos internacionales",
+    "description": "DATOS DE PRUEBA SINTÉTICOS. No representa una política real. Cómo solicitar el reembolso de viáticos internacionales de un viaje de trabajo aprobado.",
+    "audience": "Colaboradores",
+    "scope": "internal",
+    "record_keeper": null,
+    "plan_type": null,
+    "tags": [
+      "viaticos",
+      "reembolso",
+      "viajes"
+    ],
+    "language": "es",
+    "last_updated": "2026-03-02",
+    "schema_version": "kb_article_v2",
+    "topic": "viaticos",
+    "subtopics": [
+      "reembolso",
+      "legalizacion"
+    ]
+  },
+  "details": {
+    "critical_flags": {
+      "portal_required": true,
+      "mfa_relevant": false,
+      "record_keeper_must_be": null
+    },
+    "business_rules": [
+      {
+        "category": "eligibility",
+        "rules": [
+          "Solo se reembolsan viáticos internacionales de viajes de trabajo aprobados antes de la salida."
+        ]
+      },
+      {
+        "category": "plazos",
+        "rules": [
+          "El reembolso de viáticos internacionales se solicita en el portal de gastos dentro de los 15 días posteriores al viaje.",
+          "Los gastos sin factura o fuera de plazo no son reembolsables."
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "step_number": 1,
+        "type": "action",
+        "visibility": "participant",
+        "description": "Ingresa al portal de gastos y abre una solicitud de reembolso de viáticos internacionales.",
+        "notes": null
+      },
+      {
+        "step_number": 2,
+        "type": "action",
+        "visibility": "participant",
+        "description": "Adjunta las facturas originales y el formato de legalización de gastos.",
+        "notes": "Las facturas deben estar a nombre de la empresa."
+      },
+      {
+        "step_number": 3,
+        "type": "action",
+        "visibility": "participant",
+        "description": "Envía la solicitud para la aprobación del jefe inmediato antes del pago.",
+        "notes": ""
+      }
+    ],
+    "faq_pairs": [
+      {
+        "question": "¿Cuándo se pagan los viáticos internacionales aprobados?",
+        "answer": "Tesorería paga los viáticos internacionales aprobados en el siguiente ciclo de pagos."
+      }
+    ],
+    "references": {
+      "participant_portal": "Portal de gastos (intranet)",
+      "contact": {
+        "email": "tesoreria@empresa.invalid",
+        "phone": null,
+        "support_hours": "Lunes a viernes, 8:00 a 17:00"
+      },
+      "internal_articles": [],
+      "external_links": []
+    }
+  }
+}

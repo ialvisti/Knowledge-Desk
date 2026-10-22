@@ -69,8 +69,8 @@ como referencia de diseño, sin modificarlos.
 | `knowledge-desk-server/src/documents/chunker.ts` | **Port** escrito de nuevo en TypeScript del `KBChunker` de ForUsGuide (`kb-rag-system/data_pipeline/chunking.py`, leído en solo lectura). Reproduce sus formatos de texto, tipos, categorías y niveles para que los fragmentos compitan en igualdad en el índice compartido. Las diferencias deliberadas están documentadas en la cabecera del archivo. |
 | Validación kb_article_v2 | Sigue los campos que exige el procesador de ForUsGuide (`article_processor.py`, leído en solo lectura) y las variantes del esquema. |
 | `knowledge-desk-ui/` | Interfaz rehecha sobre la extraída: consulta conectada al servidor propio, Documentos real, visor del JSON auténtico y fuentes externas. Se retiraron la maqueta de Documentos y el cliente directo a ForUsGuide. |
-| Pruebas | `node --test` en el servidor y Playwright en la interfaz (escritorio, móvil, E2E y capturas). Simuladores locales de ForUsGuide y Pinecone y artículos JSON sintéticos. Ninguna prueba llama a servicios reales. |
-| Operación | `scripts/` (Windows), `.github/workflows/verificar.yml`, `render.yaml` (preparado, sin recursos creados) y `docs/verificacion/` (matriz de 51 criterios y capturas). |
+| Pruebas | `node --test` en el servidor y Playwright en la interfaz (escritorio, móvil, E2E y capturas). Simuladores locales de ForUsGuide y Pinecone y artículos JSON sintéticos. Esta suite versionada (la de la CI) no llama a servicios reales. El smoke operacional contra la vista previa de Render es aparte y está en el [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md). |
+| Operación | `scripts/` (Windows), `.github/workflows/verificar.yml`, `render.yaml` (vista previa gratuita, desplegada) y `docs/verificacion/` (matriz de 51 criterios, capturas y [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md)). |
 
 ForUsGuide (`C:\Users\ialvi\ForUsWorkspace\ForUsGuide`) y los documentos de negocio
 originales se consultaron **solo en lectura** durante toda la ampliación.

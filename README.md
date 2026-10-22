@@ -14,12 +14,23 @@ transacciones y nada se envía a clientes.
 
 ## Estado (2026-10-22)
 
-- **Implementado y probado en local, con servicios simulados**: HU01 a HU10. La
+- **Cobertura completa en local, con servicios simulados**: HU01 a HU10. La
   [matriz de los 51 criterios](docs/verificacion/MATRIZ_CRITERIOS.md) da el estado de
-  cada criterio por modo y no oculta condiciones.
-- **Pendiente**: conectar servicios reales (ForUsGuide, Pinecone o un proveedor de IA),
-  evaluar calidad y latencia, y desplegar. Ninguna prueba llamó a servicios reales ni de
-  pago. Los pasos están en [NEXT_STEPS.md](NEXT_STEPS.md).
+  cada criterio por modo y no oculta condiciones. La suite de pruebas versionada,
+  la misma que ejecuta la CI, no llama a servicios reales.
+- **Vista previa real desplegada** en <https://knowledge-desk-preview.onrender.com>:
+  Render gratuito, modo `local` con OpenAI y datos temporales.
+  - El smoke real con un artículo **sintético** pasó: carga, consulta con fuente, JSON
+    original byte a byte, reemplazo, eliminación y consulta sin evidencia tras
+    eliminar.
+  - Detalle y restricciones en el
+    [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md).
+- **Pendiente** (ver [NEXT_STEPS.md](NEXT_STEPS.md)):
+  - corpus real aprobado;
+  - evaluación de calidad y latencia con una muestra validada;
+  - aceptación de negocio de cinco propuestas configurables;
+  - integración real con ForUsGuide y Pinecone (modo `forusguide`, condicionada);
+  - persistencia (opcional, no autorizada).
 
 ## Cómo funciona
 
@@ -134,12 +145,34 @@ Resultado del 2026-10-22:
 - Tipos, lint y build correctos.
 - `npm audit`: 0 vulnerabilidades en el servidor y en la interfaz.
 
-Las pruebas usan artículos JSON sintéticos y simuladores locales. No hay corpus privado
-en el repositorio.
+La suite de pruebas versionada (la de la CI) usa artículos JSON sintéticos y
+simuladores locales, y no llama a servicios reales. No hay corpus privado en el
+repositorio.
 
-## Vista previa gratuita en Render (preparada, no creada)
+Aparte de esa suite, se hizo un smoke **operacional real**, también con Playwright,
+contra la vista previa desplegada en Render y con un artículo sintético. El
+[registro del despliegue](docs/verificacion/DEPLOY_RENDER.md) detalla qué acredita y
+qué no, y registra la CI en verde del commit desplegado.
 
-[`render.yaml`](render.yaml) describe un único web service **gratuito y sin disco**:
+## Vista previa gratuita en Render (desplegada)
+
+<https://knowledge-desk-preview.onrender.com>. Las credenciales de piloto las entrega el
+responsable del despliegue. El [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md)
+recoge el servicio, el commit desplegado, el smoke real y las restricciones.
+
+**Probarla con el artículo sintético**
+
+1. Descarga [`demo/articulo-sintetico-viaticos.json`](demo/articulo-sintetico-viaticos.json)
+   (datos ficticios).
+2. En **Documentos**, carga el JSON con **Explorar archivos** y espera a que quede
+   **Indexado**.
+3. Pregunta en **Consulta**, por ejemplo: "¿En qué plazo se solicita el reembolso de
+   viáticos internacionales después del viaje?".
+
+Si Documentos aparece vacío, el servicio se suspendió o se reinició y perdió los datos:
+vuelve a cargar el archivo. Nada se carga solo.
+
+[`render.yaml`](render.yaml) describe ese único web service **gratuito y sin disco**:
 
 - Compila la interfaz y arranca `node knowledge-desk-server/src/main.ts`, con salud en
   `/api/salud` y `autoDeploy: false`.
@@ -160,9 +193,10 @@ en el repositorio.
   - Esta marca no cambia el modo ni presenta el servicio como simulado: el proveedor
     es real y cada carga y consulta consume su cuota.
 - `KD_MAX_ARTICULO_MB=10`, por la memoria de la instancia gratuita.
-- `KD_EJEMPLOS_ARCHIVO=demo/ejemplos-preview.json`: tres preguntas sobre el artículo
-  **sintético** "Política de viáticos internacionales", que no es una política real.
-  - Solo se muestran mientras ese artículo esté cargado: con el corpus vacío o tras un
+- `KD_EJEMPLOS_ARCHIVO=demo/ejemplos-preview.json`: tres preguntas sobre el contenido
+  del artículo **sintético** de viáticos (`demo/articulo-sintetico-viaticos.json`),
+  que no es una política real.
+  - Solo se muestran mientras un artículo las sustenta: con el corpus vacío o tras un
     reinicio se ocultan.
   - Nada se carga solo al arrancar, porque gastaría cuota del proveedor en cada
     reinicio.
@@ -182,7 +216,8 @@ autorizado**. Ver [NEXT_STEPS.md](NEXT_STEPS.md).
 - Un reemplazo es del mismo `article_id`. La eliminación exige confirmación y se
   reintenta si es parcial.
 - El primer despliegue es una vista previa **gratuita** en Render, con datos
-  temporales y modo `local`. No hay recursos de pago.
+  temporales y modo `local`. Está desplegada. No hay cómputo ni disco de pago; el
+  uso del modelo consume la API de OpenAI.
 
 **Propuestas implementadas, pendientes de aprobación de negocio** (detalle en
 [NEXT_STEPS.md](NEXT_STEPS.md)):
@@ -200,11 +235,14 @@ autorizado**. Ver [NEXT_STEPS.md](NEXT_STEPS.md).
 ├── README.md · NEXT_STEPS.md · PROCEDENCIA.md · render.yaml · package.json · .node-version
 ├── .github/workflows/verificar.yml      CI sin secretos
 ├── config/ejemplos.json                 preguntas de ejemplo por modo (HU06)
-├── demo/ejemplos-simulados.json         ejemplos del modo demostración
+├── demo/
+│   ├── ejemplos-simulados.json          ejemplos del modo demostración
+│   ├── ejemplos-preview.json            ejemplos de la vista previa de Render
+│   └── articulo-sintetico-viaticos.json artículo JSON ficticio para cargar en la vista previa
 ├── scripts/                             instalar, simulado, iniciar, verificar, capturas (+ comun.ps1)
 ├── docs/
 │   ├── CONTRATO_KNOWLEDGE_QUESTION.md   contratos: consulta, artículos JSON y ForUsGuide
-│   ├── verificacion/                    matriz de 51 criterios, 23 capturas, comparacion.html
+│   ├── verificacion/                    matriz de 51 criterios, registro del despliegue, 23 capturas, comparacion.html
 │   └── negocio/                         documentos y referencias de diseño originales (no se editan)
 ├── knowledge-desk-server/               API, pipeline de artículos JSON, acceso y pruebas (node --test)
 └── knowledge-desk-ui/                   interfaz React y pruebas Playwright (ver su README)
