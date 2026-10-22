@@ -1,0 +1,22 @@
+{
+  "referencia": {
+    "panelTop": 208,
+    "zonaTop": 208,
+    "zonaBottom": 584,
+    "fila": 70,
+    "alto": 692
+  },
+  "medido": {
+    "panelTop": 208,
+    "zonaTop": 208,
+    "zonaBottom": 584,
+    "filas": [
+      70,
+      70,
+      70,
+      70,
+      70
+    ],
+    "quintaBottom": 624
+  }
+}
