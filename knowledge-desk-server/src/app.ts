@@ -116,6 +116,20 @@ function idDocumento(valor: string): string {
 
 const ARTICULO = /^[A-Za-z0-9_.:-]{1,200}$/
 
+// Archivos que solo pueden venir de dist: si no existen, son 404 y no la interfaz.
+const RECURSO_ESTATICO = /\.(?:js|mjs|css|map|json|txt|ico|png|jpe?g|gif|svg|webp|avif|woff2?|ttf|otf|webmanifest|html)$/i
+
+// ¿Debe responder la interfaz (index.html) a esta ruta desconocida? Solo un GET
+// o HEAD a una ruta de navegación: nunca la API (con o sin barra final) ni un
+// recurso estático que no existe.
+export function esRutaDeInterfaz(metodo: string, url: string): boolean {
+  if (metodo !== 'GET' && metodo !== 'HEAD') return false
+  const ruta = url.split('?')[0]
+  if (ruta === '/api' || ruta.startsWith('/api/')) return false
+  if (ruta.startsWith('/assets/')) return false
+  return !RECURSO_ESTATICO.test(ruta)
+}
+
 function iguales(a: string, b: string): boolean {
   const resumenA = createHash('sha256').update(a).digest()
   const resumenB = createHash('sha256').update(b).digest()
@@ -385,11 +399,13 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
 
   if (config.uiDistDir) {
     // Lo que no es un archivo de dist cae en el manejador de abajo, que entrega
-    // index.html para las rutas del router de la interfaz.
+    // index.html para las rutas del router de la interfaz. La raíz se declara
+    // aparte: el comodín de archivos estáticos la trataría como un directorio.
     await app.register(fastifyStatic, { root: config.uiDistDir, index: false })
+    app.get('/', (_request, reply) => reply.type('text/html; charset=utf-8').sendFile('index.html'))
   }
   app.setNotFoundHandler((request, reply) => {
-    if (request.url.startsWith('/api/') || request.method !== 'GET' || !config.uiDistDir) {
+    if (!config.uiDistDir || !esRutaDeInterfaz(request.method, request.url)) {
       const error = new KdError('NOT_FOUND')
       return reply.status(error.status).send(cuerpoError(error, request.id))
     }
