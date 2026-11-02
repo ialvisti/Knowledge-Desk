@@ -181,6 +181,16 @@ anotarán aquí cuando se publique y se verifique en Render.
   Ver [CONSULTA_VALIDACION.md](CONSULTA_VALIDACION.md).
 - **Configuración de Render.** Sin cambios: el blueprint solo actualiza sus
   comentarios.
+- **Dependencias del servidor.** `npm audit` señalaba dos avisos moderados en la
+  cadena de `@fastify/static`, `glob` y `minimatch`: GHSA-3g3m-2fjr-6pw4 (glob 9.0.0 a
+  14.0.1) y GHSA-g3hv-75wg-m249 (minimatch anterior a 11.0.1).
+  - Ninguna versión de `@fastify/static` los corrige: la última, 10.1.8, pide
+    `glob ^13`.
+  - `knowledge-desk-server/package.json` fuerza, solo para `@fastify/static`,
+    `glob ^14.0.2`, que trae `minimatch 11`.
+  - `@fastify/static` solo llama a `glob` con `wildcard: false`, y el servidor usa la
+    opción por defecto.
+  - Fastify y `@fastify/static` no cambian de versión.
 
 ## Smoke real del 2026-10-22 (18:21–18:25 UTC), con acceso protegido (histórico)
 

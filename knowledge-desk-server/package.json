@@ -26,5 +26,10 @@
     "@types/node": "^24.19.2",
     "oxlint": "^1.89.0",
     "typescript": "~6.0.3"
+  },
+  "overrides": {
+    "@fastify/static": {
+      "glob": "^14.0.2"
+    }
   }
 }
