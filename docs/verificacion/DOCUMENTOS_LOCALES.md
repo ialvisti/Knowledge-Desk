@@ -134,6 +134,6 @@ Las pruebas funcionales están en `knowledge-desk-ui/tests/ui/documentos-locales
 - extracción real de PDF y DOCX;
 - ninguna petición de escritura a `/api/documentos`.
 
-Este documento no registra resultados de ejecución. Estos cambios están incluidos en
-la versión preparada para publicación; el despliegue se verifica en
-[DEPLOY_RENDER.md](DEPLOY_RENDER.md).
+Este documento describe el procedimiento de prueba. Los cambios están publicados
+desde el 2026-11-01; el despliegue y el alcance de la comprobación pública se registran
+en [DEPLOY_RENDER.md](DEPLOY_RENDER.md).

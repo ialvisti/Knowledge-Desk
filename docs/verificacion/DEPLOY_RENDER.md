@@ -7,9 +7,10 @@
 | URL | <https://knowledge-desk-preview.onrender.com> |
 | Servicio | `srv-dbd57prncjis73b619sg` |
 | Plan | **Free**, región Oregon, **sin disco**, `autoDeploy` desactivado |
-| Despliegue actual | `dep-dbd779ifngtc73fron20` (live): `main`, commit `5c1df338dc04168e4d781ff0d9f0234ac4005634`. El `render.yaml` y el panel coinciden |
+| Despliegue actual | `dep-dbjtlsoae00c73f8kc7g` (live): `main`, commit `7423ea64a64d515a306ec29d1444684d8eef8468`. Verificado en la URL pública el 2026-11-01 |
 | Modo actual | `KD_MODO=forusguide` de solo consulta, con acceso público y sin credenciales de Pinecone |
-| Despliegue anterior (histórico) | `dep-dbd5qu3l550s73apj9gg`: commit `4a75c397d5161aa265dc56504ce62aa4b6652b7b`, ya en modo `forusguide` con la configuración aplicada en el panel. Sobre él se hizo la prueba en vivo |
+| Despliegue anterior verificado (histórico) | `dep-dbd779ifngtc73fron20`: commit `5c1df338dc04168e4d781ff0d9f0234ac4005634` |
+| Otro despliegue histórico | `dep-dbd5qu3l550s73apj9gg`: commit `4a75c397d5161aa265dc56504ce62aa4b6652b7b`, ya en modo `forusguide` con la configuración aplicada en el panel. Sobre él se hizo la prueba del 2026-10-22 |
 | Primer despliegue (histórico) | `dep-dbd57qbncjis73b61bi0`: commit `9337e67d924b3492d245c6423cb01513508b8a2e`, `KD_MODO=local` con OpenAI (chat `gpt-6-luna` con `KD_CHAT_REASONING_EFFORT=none`, embeddings `text-embedding-3-small`) y acceso protegido |
 | Datos | `KD_DATA_DIR=/tmp/knowledge-desk`, `KD_DATOS_TEMPORALES=true`, JSON de hasta 10 MB |
 | Secretos | Solo en el panel de Render; nunca en el repositorio ni en este registro. Actual: `FORUSGUIDE_API_KEY`, que se transfirió en privado. La clave de OpenAI y las credenciales de piloto de `9337e67` ya no están en el panel |
@@ -25,7 +26,7 @@
     hay que volver a cargarlos. El pie de Documentos lo avisa. En el modo actual el
     servidor no carga artículos ni guarda las consultas: no hay nada que perder en el
     servidor.
-  - Desde la versión preparada para publicación, Documentos usa una colección del
+  - Desde la versión publicada el 2026-11-01, Documentos usa una colección del
     navegador. Vive en el IndexedDB de cada usuario, independiente de ForUsGuide y del
     servidor, y no se pierde al reiniciar Render, pero sí al borrar los datos del
     navegador. Ver [DOCUMENTOS_LOCALES.md](DOCUMENTOS_LOCALES.md).
@@ -85,7 +86,7 @@ distinta de la prueba en el navegador; sus cifras no se mezclan:
 - Los campos coinciden con el adaptador `knowledge-desk-server/src/consulta/forusguide.ts`,
   que no cambia.
 
-**Configuración actual del panel** (`dep-dbd779ifngtc73fron20`, commit `5c1df33`),
+**Configuración verificada del panel el 2026-10-22** (`dep-dbd779ifngtc73fron20`, commit `5c1df33`),
 alineada con [`render.yaml`](../../render.yaml):
 
 | Situación | Variables |
@@ -164,10 +165,37 @@ Desplegado en `dep-dbd779ifngtc73fron20`.
   credenciales de Pinecone.
 - Calidad sin medir y latencia observada de 25 s, fuera de la meta.
 
-## Versión preparada para publicación (pendiente de desplegar)
+## Publicación verificada del 2026-11-01
 
-Incluye dos funciones sobre `5c1df33`. El commit y el identificador del despliegue se
-anotarán aquí cuando se publique y se verifique en Render.
+El commit `7423ea64a64d515a306ec29d1444684d8eef8468` quedó activo en
+`dep-dbjtlsoae00c73f8kc7g`. La CI
+[`41366222925`](https://github.com/ialvisti/Knowledge-Desk/actions/runs/41366222925)
+pasó las 113 pruebas del servidor, las 135 de navegador y E2E, el build, typecheck,
+lint y las auditorías de dependencias.
+
+La comprobación pública con ForUsGuide real está en
+[`consulta-validacion/render-publico-20261101.json`](consulta-validacion/render-publico-20261101.json):
+
+- Salud correcta, modo `forusguide`, acceso público y máximo de 100 caracteres.
+- Inicio, Documentos, script principal y worker de PDF responden HTTP 200.
+- La pregunta repetida de 1036 caracteres recibe 422 `VALIDATION_ERROR`, motivo
+  `larga`, identificador `req-423809d9`.
+- La frase de 100 caracteres recibe 200 e `insufficient`, cobertura baja calculada
+  por la política, `answer: null` y ninguna fuente como sustento. Identificador
+  `req-6366ca4d`. ForUsGuide devolvió 24 fragmentos de 10 artículos.
+- La consulta de registros posteriores al arranque no devolvió errores de aplicación.
+
+El primer intento, `dep-dbjthejbc2fs73dr0ifg`, figuró como activo, pero la
+comprobación pública aún devolvía el máximo anterior de 2000. Tras reconstruir con
+`clearCache: true`, se verificaron los resultados anteriores. No se consideró
+suficiente el estado del despliegue sin comprobar el comportamiento público.
+
+La disponibilidad de Documentos y del worker no sustituye una prueba de carga,
+reemplazo y eliminación en un navegador sobre esa URL. Esos flujos están cubiertos
+por las suites y el smoke de producción local descritos en
+[DOCUMENTOS_LOCALES.md](DOCUMENTOS_LOCALES.md).
+
+La versión incluye dos funciones sobre `5c1df33`:
 
 - **Documentos en el navegador.** Sin indexación en el servidor, Documentos abre una
   colección en el IndexedDB de cada usuario, independiente de ForUsGuide. Ver
@@ -233,7 +261,8 @@ Es la suite versionada, con servicios simulados; no llama a servicios reales.
 
 | Commit | Run | Resultado |
 | --- | --- | --- |
-| `5c1df33` (actual) | [`39850199650`](https://github.com/ialvisti/Knowledge-Desk/actions/runs/39850199650) | Estado en el enlace |
+| `7423ea6` (código publicado) | [`41366222925`](https://github.com/ialvisti/Knowledge-Desk/actions/runs/41366222925) | Éxito: 113 pruebas del servidor, 135 de navegador y E2E, build, typecheck, lint y auditorías |
+| `5c1df33` (histórico) | [`39850199650`](https://github.com/ialvisti/Knowledge-Desk/actions/runs/39850199650) | Estado en el enlace |
 | `4a75c39` (histórico) | [`39835813660`](https://github.com/ialvisti/Knowledge-Desk/actions/runs/39835813660) | **Éxito**: 98 pruebas del servidor, 81 de navegador y E2E, build, typecheck, lint y auditorías `npm` |
 | `9337e67` (histórico) | [`39829353927`](https://github.com/ialvisti/Knowledge-Desk/actions/runs/39829353927) | **Éxito** (12 min 44 s): 92 pruebas del servidor, 77 de navegador y E2E, build, typecheck, lint y auditorías `npm` |
 
@@ -245,10 +274,10 @@ Es la suite versionada, con servicios simulados; no llama a servicios reales.
    En la prueba en vivo, la respuesta tardó unos 25 s.
 3. Abre una fuente: verás sus fragmentos indexados en ForUsGuide, no el JSON original.
 4. **Documentos**: el servidor no tiene indexación y no admite cargas. Con la versión
-   preparada para publicación, la pantalla abre la colección del navegador (PDF,
+   publicada, la pantalla abre la colección del navegador (PDF,
    DOCX, TXT o JSON en el IndexedDB de cada usuario), independiente de ForUsGuide; ver
-   [DOCUMENTOS_LOCALES.md](DOCUMENTOS_LOCALES.md). El despliegue `5c1df33` todavía
-   muestra el aviso anterior con la carga deshabilitada.
+   [DOCUMENTOS_LOCALES.md](DOCUMENTOS_LOCALES.md). En el despliegue histórico
+   `5c1df33` se mostraba el aviso anterior con la carga deshabilitada.
 
 ## Probarla con el artículo sintético (modo `local`, histórico)
 

@@ -2,9 +2,11 @@
 
 Los flujos de HU01 a HU10 están implementados y probados en local con servicios
 simulados (ver la [matriz](docs/verificacion/MATRIZ_CRITERIOS.md)). La vista previa
-real está desplegada (`5c1df33`) con acceso público y el servicio real de ForUsGuide.
-La consulta en vivo se verificó el 2026-10-22 sobre el despliegue anterior
-(`4a75c39`). Este documento recoge solo lo que falta.
+real está desplegada (`7423ea6`) con acceso público y el servicio real de ForUsGuide.
+El 2026-11-01 se verificaron en la URL pública el máximo de 100 caracteres y la
+insuficiencia para la pregunta sobre vacaciones. Documentos incluye la colección
+del navegador, independiente de ForUsGuide. Detalle y límites en el
+[registro del despliegue](docs/verificacion/DEPLOY_RENDER.md).
 
 Ninguna credencial se guarda en el repositorio: van en `knowledge-desk-server/.env`
 (local, ignorado por Git) o en el panel del proveedor de despliegue.
@@ -45,7 +47,8 @@ Ninguna credencial se guarda en el repositorio: van en `knowledge-desk-server/.e
       14 fragmentos, cobertura alta;
     - request `req-ee5c9150`, 25 030 ms;
     - fuente y Documentos abiertos, sin errores de JS.
-  - **Código vigente: `5c1df33`** (`dep-dbd779ifngtc73fron20`). Incluye:
+  - **Código de la vista previa del 2026-10-22: `5c1df33`**
+    (`dep-dbd779ifngtc73fron20`, histórico). Incluye:
     - `render.yaml` alineado con el panel;
     - la salvaguarda contra `PINECONE_*` en la vista pública;
     - el texto de Documentos;

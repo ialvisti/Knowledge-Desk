@@ -1,0 +1,52 @@
+{
+  "fecha": "2026-11-01",
+  "zonaHoraria": "America/Bogota",
+  "verificadoEnUtc": "2026-11-02T00:39:31.9194367+00:00",
+  "url": "https://knowledge-desk-preview.onrender.com",
+  "serviceId": "srv-dbd57prncjis73b619sg",
+  "deployId": "dep-dbjtlsoae00c73f8kc7g",
+  "commit": "7423ea64a64d515a306ec29d1444684d8eef8468",
+  "ci": "https://github.com/ialvisti/Knowledge-Desk/actions/runs/41366222925",
+  "salud": "ok",
+  "modo": "forusguide",
+  "simulado": false,
+  "preguntaMax": 100,
+  "indexacionConfigurada": false,
+  "interfaz": {
+    "inicio": 200,
+    "documentos": 200,
+    "scriptHttp": 200,
+    "script": "https://knowledge-desk-preview.onrender.com/assets/index-5K2fhFzN.js",
+    "workerPdf": "https://knowledge-desk-preview.onrender.com/assets/pdf.worker.min-CIqJB0yW.mjs",
+    "workerHttp": 200,
+    "workerTipo": [
+      "application/javascript; charset=utf-8"
+    ]
+  },
+  "preguntaRepetida": {
+    "http": 422,
+    "motivo": "larga",
+    "codigo": "VALIDATION_ERROR",
+    "requestId": "req-423809d9",
+    "caracteres": 1036
+  },
+  "preguntaSimple": {
+    "answer": null,
+    "coverage": {
+      "level": "baja",
+      "label": "Cobertura baja",
+      "explanation": "El servicio de consulta declaró que la documentación recuperada no cubre partes de la pregunta. No es suficiente para responder con confianza.",
+      "sufficient": false,
+      "relevant_fragments": 24,
+      "total_fragments": 24,
+      "documents": 10,
+      "policy": "kd-cobertura-v1",
+      "basis": "politica"
+    },
+    "requestId": "req-6366ca4d",
+    "outcome": "insufficient",
+    "fuentes": 0,
+    "http": 200,
+    "caracteres": 100
+  }
+}

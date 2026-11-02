@@ -4,10 +4,12 @@ Registro del caso reportado el 2026-11-01 sobre la consulta de Knowledge Desk: q
 reportó, qué se observó en los servicios reales, qué se corrigió y qué queda
 pendiente.
 
-- Los cambios están incluidos en la versión preparada para publicación. El despliegue
-  se verifica en [DEPLOY_RENDER.md](DEPLOY_RENDER.md).
-- Hasta que ese despliegue conste allí, la vista previa de Render conserva el
-  comportamiento anterior.
+- Los cambios están publicados en Render desde el 2026-11-01. El despliegue y la CI
+  se registran en [DEPLOY_RENDER.md](DEPLOY_RENDER.md).
+- La comprobación sobre la URL pública está en
+  [render-publico-20261101.json](consulta-validacion/render-publico-20261101.json):
+  la pregunta de 1036 caracteres se rechaza y la de 100 devuelve insuficiencia,
+  sin respuesta generada ni fuentes presentadas como sustento.
 
 ## Lo reportado
 
@@ -197,10 +199,9 @@ En [`consulta-validacion/`](consulta-validacion/), generadas con la API sustitui
    y una media de las 5 mejores afinidades por debajo de 0,35, o con un solo fragmento
    relevante, se presenta ahora con Cobertura parcial en vez de alta. Los umbrales de
    kd-cobertura-v1 siguen pendientes de aprobación.
-4. **Despliegue y variabilidad externa.** La comprobación real anterior pasó con el
-   código corregido en el servidor temporal. Los cambios siguen sin publicarse en
-   Render y una llamada no garantiza que todas las respuestas variables de
-   ForUsGuide declaren correctamente sus vacíos.
+4. **Variabilidad externa.** Las comprobaciones con el servidor temporal y con la
+   URL pública de Render pasaron. Una llamada no garantiza que todas las
+   respuestas variables de ForUsGuide declaren correctamente sus vacíos.
 5. **Credencial de ForUsGuide.** La llamada directa sin credencial respondió;
    conviene confirmar con quien opera ForUsGuide si su endpoint exige `X-API-Key`.
 6. **Manual técnico.** No se modificó. Debe actualizarse con el máximo de 100 y la

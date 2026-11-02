@@ -14,6 +14,11 @@ de recuperación semántica de esta matriz ni modifica el corpus de ForUsGuide.
 El alcance y la evidencia de esa colección se documentan por separado en
 [DOCUMENTOS_LOCALES.md](DOCUMENTOS_LOCALES.md).
 
+La versión pública verificada el 2026-11-01 corresponde al código `7423ea6`, con
+máximo de 100 caracteres. El resultado de la publicación y sus comprobaciones
+están en [DEPLOY_RENDER.md](DEPLOY_RENDER.md). Los registros del 2026-10-22 que
+siguen a continuación son históricos.
+
 ## Cómo leer esta matriz
 
 El estado se da **por modo**, porque las garantías no son iguales en los dos:
@@ -48,7 +53,7 @@ Playwright en modo `local` (vista previa en Render, OpenAI, artículo sintético
 toca el modo `forusguide`.
 
 Después, la vista previa pasó al modo `forusguide` de solo consulta, con acceso
-público (código actual `5c1df33`). Se registraron dos pruebas reales, también en el
+público (código de entonces `5c1df33`). Se registraron dos pruebas reales, también en el
 registro:
 
 - una llamada directa a `knowledge-question` (HTTP 200, `well_covered`), que confirma
