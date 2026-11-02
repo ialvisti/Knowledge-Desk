@@ -1,0 +1,6 @@
+{
+  "generadoEn": "2026-11-01T23:48:49.158Z",
+  "metodo": "Playwright con la API sustituida en el navegador (tests/ui/fixtures.ts). Los contratos coinciden con los que produce el servidor en knowledge-desk-server/test/consulta-validacion.test.ts.",
+  "servicioExterno": "No se llama a ForUsGuide ni a ningún modelo.",
+  "comando": "npx playwright test tests/capturas/consulta-validacion.spec.ts --project=capturas"
+}

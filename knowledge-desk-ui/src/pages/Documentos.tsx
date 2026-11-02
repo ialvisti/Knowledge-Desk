@@ -4,14 +4,12 @@ import { ApiError } from '../api/cliente'
 import { cargarDocumento, listarDocumentos, reintentarDocumento, textoLimite, validarArchivo } from '../api/servicios'
 import type { DocumentoResumen } from '../api/tipos'
 import { DialogoEliminacion, DialogoReemplazo } from '../components/documentos'
-import { Button, Icon, StatusBadge } from '../components/ui'
-import { fechaCorta } from '../lib/formato'
+import { Button, Icon, Spinner, StatusBadge } from '../components/ui'
+import { fechaCorta, normalizar } from '../lib/formato'
+import { RUTA_COLECCION_LOCAL } from '../lib/locales'
 import { observarRevision, suscribirRevision } from '../state/consultas'
 import { useServidor } from '../state/servidor'
-
-function normalizar(valor: string) {
-  return valor.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-}
+import { DocumentosLocales } from './DocumentosLocales'
 
 interface Aviso { id: number; tipo: 'ok' | 'error'; texto: string }
 
@@ -49,7 +47,26 @@ function useDocumentos() {
   return { documentos, indexacion, error, recargar }
 }
 
+// Documentos elige la colección según lo que el servidor declara:
+//  - ?coleccion=local abre siempre la colección local del navegador;
+//  - mientras no se conoce el estado no se presupone ninguna capacidad;
+//  - sin indexación (vista previa de Render, solo consulta) el servidor no
+//    recibe archivos y se abre la colección local;
+//  - con indexación real se mantiene la administración del servidor.
 export function Documentos() {
+  const { estado, error } = useServidor()
+  const [params] = useSearchParams()
+  if (params.get('coleccion') === 'local') return <DocumentosLocales />
+  if (!estado && !error) {
+    return <main id="contenido" tabIndex={-1} className="documents-page page-container">
+      <p className="loading-line" role="status"><Spinner />Comprobando las capacidades del servidor…</p>
+    </main>
+  }
+  if (estado && !estado.indexacion.configurada) return <DocumentosLocales />
+  return <DocumentosServidor />
+}
+
+function DocumentosServidor() {
   const { estado, revalidar } = useServidor()
   const { documentos, indexacion, error, recargar } = useDocumentos()
   const [params] = useSearchParams()
@@ -177,6 +194,7 @@ export function Documentos() {
         <div className="document-list-footer">
           <span role="status">{visibles.length} {visibles.length === 1 ? 'documento' : 'documentos'}{filtro ? ` de ${documentos?.length ?? 0}` : ''}</span>
           {estado && <span>{estado.indexacion.configurada ? `Índice: ${estado.indexacion.destino}` : 'Indexación no configurada'}{estado.simulado ? ' · servicios simulados (demostración)' : ''}{estado.datosTemporales ? ' · vista previa con datos temporales: los artículos cargados se pierden al reiniciar o redesplegar' : ''}</span>}
+          <Link to={RUTA_COLECCION_LOCAL} className="text-link local-collection-link"><Icon name="computer" />Documentos de este navegador</Link>
         </div>
       </section>
     </div>

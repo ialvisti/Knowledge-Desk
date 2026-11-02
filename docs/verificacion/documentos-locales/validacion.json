@@ -1,0 +1,63 @@
+{
+  "fecha": "2026-11-01",
+  "zona": "America/Bogota",
+  "servidor": {
+    "tipos": "correcto",
+    "pruebas": 103,
+    "resultado": "correcto",
+    "comandos": [
+      "npm run typecheck --prefix knowledge-desk-server",
+      "npm run lint --prefix knowledge-desk-server",
+      "npm test --prefix knowledge-desk-server"
+    ],
+    "lint": "correcto"
+  },
+  "navegador": {
+    "almacenamiento": "IndexedDB real; capacidades API sustituidas en pruebas UI; servidor real con servicios simulados en E2E",
+    "resultado": "correcto",
+    "proyectos": [
+      "escritorio",
+      "movil",
+      "e2e"
+    ],
+    "nuevas": 22,
+    "pruebas": 105,
+    "anteriores": 83
+  },
+  "capturas": {
+    "procedencia": "procedencia.json",
+    "resultado": "correcto",
+    "error": "Fallo de cuota inyectado de manera controlada; nunca se presenta como fallo espontáneo de Render.",
+    "comando": "npx playwright test tests/capturas/documentos-locales.spec.ts --project=capturas",
+    "cantidad": 10
+  },
+  "interfaz": {
+    "auditoriaProduccion": {
+      "comando": "npm audit --omit=dev --prefix knowledge-desk-ui --json",
+      "vulnerabilidades": 0
+    },
+    "build": "correcto",
+    "lint": "correcto"
+  },
+  "smokeProduccion": {
+    "modo": "sin_configurar; solo se probaron documentos del navegador",
+    "servidor": "Fastify real en localhost, sin mocks de API",
+    "erroresJavaScript": 0,
+    "resultado": "correcto",
+    "escriturasDocumentosRemotos": 0,
+    "workerPdf": "Empaquetado y servido por el mismo origen, HTTP 200",
+    "flujo": [
+      "cargar PDF",
+      "recargar",
+      "ver texto e integridad",
+      "reemplazar por DOCX",
+      "buscar contenido nuevo",
+      "comprobar diseño escritorio y móvil",
+      "eliminar"
+    ]
+  },
+  "despliegue": {
+    "observacion": "Cambios en el proyecto; no se realizó commit, push ni despliegue en Render.",
+    "publicado": false
+  }
+}

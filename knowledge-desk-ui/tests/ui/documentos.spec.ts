@@ -155,16 +155,16 @@ test.describe('Modo demostración', () => {
 })
 
 test.describe('Vista previa con ForUsGuide como motor, sin indexación', () => {
-  test('Documentos dice de dónde salen las respuestas y no permite cargar', async ({ page }) => {
+  test('Documentos habilita la colección del navegador cuando el servidor no tiene indexación', async ({ page }) => {
     await simularServidor(page, {
       indexacion: false,
       estado: { modo: 'forusguide', accesoPublico: true, indexacion: { configurada: false, destino: null } },
     })
     await page.goto('/documentos')
-    await expect(page.getByText('Las consultas usan el corpus de ForUsGuide. Este servidor no tiene indexación configurada: aquí no se cargan artículos.')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Explorar archivos' })).toBeDisabled()
-    await expect(page.locator('.document-list-footer')).toContainText('Indexación no configurada')
-    await expect(page.getByText('Aún no hay artículos cargados.')).toBeVisible()
+    await expect(page.getByLabel('Seleccionar documentos locales')).toBeAttached()
+    await expect(page.getByRole('button', { name: 'Explorar archivos' })).toBeEnabled()
+    await expect(page.locator('tbody tr')).toHaveCount(0)
+    await expect(page.locator('a[href="/consulta-local"]').first()).toBeVisible()
   })
 })
 

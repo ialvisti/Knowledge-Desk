@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pruebas de gestión de documentos — Knowledge Desk</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #213a30; background: #f5f6f2; }
+    body { margin: 0; }
+    header, main { max-width: 1100px; margin: auto; padding: 28px 24px; }
+    header { padding-bottom: 0; }
+    h1 { font-size: clamp(26px, 4vw, 40px); letter-spacing: -.025em; margin: 0 0 12px; }
+    p { line-height: 1.6; max-width: 88ch; }
+    a { color: #135a3b; text-underline-offset: 3px; }
+    nav { display: flex; flex-wrap: wrap; gap: 10px 20px; margin-top: 22px; }
+    figure { margin: 0 0 32px; background: white; border: 1px solid #d7dfd8; border-radius: 12px; overflow: hidden; }
+    figcaption { padding: 20px 24px; border-bottom: 1px solid #e1e7e2; }
+    h2 { margin: 0 0 8px; font-size: 20px; }
+    figcaption p { margin: 0; color: #4e6058; }
+    figure img { display: block; width: 100%; height: auto; }
+    figure.mobile img { max-width: 375px; margin: auto; }
+    .notice { padding: 14px 20px; border-left: 4px solid #be8417; background: #fff5db; border-radius: 4px; }
+    footer { padding: 10px 0 30px; font-size: 14px; }
+    @media print { nav { display: none; } figure { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Pruebas de gestión de documentos</h1>
+    <p>Knowledge Desk · HU07, HU08 y HU09 · 1 de noviembre de 2026.</p>
+    <p>Carga de un PDF, conservación al recargar, reemplazo por un DOCX, comprobación del contenido nuevo y eliminación. Los archivos son ficticios; las capturas muestran el almacenamiento y la extracción reales del navegador.</p>
+    <p class="notice">La prueba de error provoca una falta de espacio de forma controlada. La API de capacidades se sustituye por el estado de Render sin indexación; estas imágenes no acreditan cambios en el corpus de ForUsGuide.</p>
+    <nav aria-label="Saltar a una prueba">
+      <a href="#carga">Carga</a><a href="#reemplazo">Reemplazo</a><a href="#error">Error</a><a href="#eliminacion">Eliminación</a><a href="../DOCUMENTOS_LOCALES.md">Guía y alcance</a><a href="procedencia.json">Procedencia</a>
+    </nav>
+  </header>
+  <main>
+    <figure id="carga">
+      <figcaption><h2>1. Documento cargado y conservado tras recargar</h2><p>El PDF aparece en la lista con su fecha, fragmentos y acciones.</p></figcaption>
+      <a href="01-documento-cargado-persistido.png"><img src="01-documento-cargado-persistido.png" alt="Documento PDF cargado y conservado después de recargar la página"></a>
+    </figure>
+    <figure>
+      <figcaption><h2>2. Texto extraído y archivo original</h2><p>La versión inicial contiene un auxilio diario de 120000 COP. El visor ofrece la descarga de los bytes originales y verifica su integridad.</p></figcaption>
+      <a href="02-texto-extraido-original.png"><img src="02-texto-extraido-original.png" alt="Visor del PDF original con su texto y verificación de integridad" loading="lazy"></a>
+    </figure>
+    <figure id="reemplazo">
+      <figcaption><h2>3. Confirmación del reemplazo</h2><p>Se identifica el documento vigente y se selecciona el archivo aprobado de la versión nueva.</p></figcaption>
+      <a href="03-reemplazar-documento-dialogo.png"><img src="03-reemplazar-documento-dialogo.png" alt="Diálogo de reemplazo con el archivo nuevo seleccionado y la confirmación marcada" loading="lazy"></a>
+    </figure>
+    <figure>
+      <figcaption><h2>4. Documento reemplazado</h2><p>El reemplazo conserva el identificador, publica la versión nueva y registra la operación.</p></figcaption>
+      <a href="04-documento-reemplazado.png"><img src="04-documento-reemplazado.png" alt="Resultado exitoso del reemplazo con el registro técnico" loading="lazy"></a>
+    </figure>
+    <figure>
+      <figcaption><h2>5. La búsqueda usa solo el contenido nuevo</h2><p>El extracto corresponde al DOCX de la versión 2: 180000 COP y 3 días hábiles. El monto anterior deja de aparecer.</p></figcaption>
+      <a href="05-consulta-version-nueva.png"><img src="05-consulta-version-nueva.png" alt="Búsqueda que recupera únicamente el contenido de la versión nueva" loading="lazy"></a>
+    </figure>
+    <figure id="error">
+      <figcaption><h2>6. Error de reemplazo y conservación de la versión vigente</h2><p>Se inyecta un error de cuota en las transacciones de escritura. La aplicación muestra el motivo, conserva la versión 2 y permite reintentar.</p></figcaption>
+      <a href="06-error-cuota-controlado.png"><img src="06-error-cuota-controlado.png" alt="Error de falta de espacio controlado y confirmación de que la versión anterior permanece intacta" loading="lazy"></a>
+    </figure>
+    <figure class="mobile">
+      <figcaption><h2>7. Vista en móvil</h2><p>La lista se adapta a una pantalla de 375 píxeles de ancho.</p></figcaption>
+      <a href="07-movil-documentos.png"><img src="07-movil-documentos.png" alt="Gestión de documentos en pantalla móvil" loading="lazy"></a>
+    </figure>
+    <figure id="eliminacion">
+      <figcaption><h2>8. Confirmación de eliminación</h2><p>Se identifica el documento y se requiere confirmación explícita antes de borrar.</p></figcaption>
+      <a href="08-eliminar-documento-confirmacion.png"><img src="08-eliminar-documento-confirmacion.png" alt="Diálogo de eliminación con las consecuencias y la confirmación marcada" loading="lazy"></a>
+    </figure>
+    <figure>
+      <figcaption><h2>9. Documento eliminado</h2><p>El archivo y sus fragmentos se retiran en una transacción; el registro técnico permanece disponible.</p></figcaption>
+      <a href="09-documento-eliminado.png"><img src="09-documento-eliminado.png" alt="Resultado de eliminación con conteos reales y registro técnico" loading="lazy"></a>
+    </figure>
+    <figure>
+      <figcaption><h2>10. La búsqueda ya no encuentra el documento eliminado</h2><p>Después de eliminarlo no quedan extractos ni enlaces a ese documento en los resultados.</p></figcaption>
+      <a href="10-consulta-sin-documento-eliminado.png"><img src="10-consulta-sin-documento-eliminado.png" alt="Búsqueda sin resultados después de eliminar el documento" loading="lazy"></a>
+    </figure>
+    <footer><a href="#">Volver al inicio</a> · <a href="../DOCUMENTOS_LOCALES.md">Pasos de prueba y límites de la demostración</a></footer>
+  </main>
+</body>
+</html>

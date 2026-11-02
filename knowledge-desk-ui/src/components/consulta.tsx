@@ -1,34 +1,43 @@
 import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ERROR_RED, ERROR_TIEMPO_CLIENTE, type ApiError } from '../api/cliente'
-import { MAX_PREGUNTA, validarPregunta } from '../api/servicios'
+import { largoPregunta, MAX_PREGUNTA, MIN_PREGUNTA, motivoPregunta, validarPregunta, type MotivoPregunta } from '../api/servicios'
 import type { Cobertura, ContratoConsulta, Fuente } from '../api/tipos'
 import { afinidad, plural } from '../lib/formato'
 import { CORPUS_CAMBIADO } from '../state/consultas'
 import { Button, Icon } from './ui'
 
+// Indicador de longitud: cuenta como el servidor (sin espacios en los extremos,
+// por caracteres) y solo aparece cuando hay texto.
+export function ContadorPregunta({ id, texto }: { id: string; texto: string }) {
+  if (!texto) return null
+  const largo = largoPregunta(texto)
+  return <p id={id} className={`question-counter ${largo > MAX_PREGUNTA ? 'question-counter-over' : ''}`}>{largo} de {MAX_PREGUNTA} caracteres</p>
+}
+
 // --- Barra de consulta del marco "Consulta a la base de conocimiento" -------
 
-export function BarraConsulta({ inicial, onConsultar, onInvalida, refInput, children }: {
+export function BarraConsulta({ inicial, errorInicial = null, onConsultar, onInvalida, refInput, children }: {
   inicial: string
+  errorInicial?: string | null
   onConsultar: (pregunta: string) => void
-  onInvalida?: (invalida: boolean) => void
+  onInvalida?: (motivo: MotivoPregunta | null) => void
   refInput?: React.RefObject<HTMLInputElement | null>
   children?: ReactNode
 }) {
   const id = useId()
   const [valor, setValor] = useState(inicial)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(errorInicial)
   function enviar(event: FormEvent) {
     event.preventDefault()
-    // HU01: una pregunta vacía o de solo espacios no se envía.
+    // HU01 y HU10: una pregunta vacía o fuera del rango de longitud no se envía.
     const problema = validarPregunta(valor)
     if (problema) {
       setError(problema)
-      onInvalida?.(true)
+      onInvalida?.(motivoPregunta(valor))
       return
     }
-    onInvalida?.(false)
+    onInvalida?.(null)
     onConsultar(valor.trim())
   }
   return <>
@@ -36,12 +45,14 @@ export function BarraConsulta({ inicial, onConsultar, onInvalida, refInput, chil
       <div className={`frame-input ${error ? 'frame-input-invalid' : ''}`}>
         <Icon name="search" />
         <label className="sr-only" htmlFor={id}>Escribe tu pregunta</label>
-        <input id={id} ref={refInput} value={valor} maxLength={MAX_PREGUNTA} placeholder="Escribe tu pregunta..." autoComplete="off"
-          aria-invalid={error !== null} aria-describedby={error ? `${id}-error` : undefined}
+        {/* Sin maxLength: recortaría en silencio un texto pegado. La longitud se valida al consultar. */}
+        <input id={id} ref={refInput} value={valor} placeholder="Escribe tu pregunta..." autoComplete="off"
+          aria-invalid={error !== null} aria-describedby={[error ? `${id}-error` : '', valor ? `${id}-contador` : ''].filter(Boolean).join(' ') || undefined}
           onChange={event => { setValor(event.target.value); setError(null) }} />
       </div>
       <button type="submit" className="button-consultar">Consultar</button>
     </form>
+    <ContadorPregunta id={`${id}-contador`} texto={valor} />
     {error && <p id={`${id}-error`} role="alert" className="frame-field-error">{error}</p>}
     {children}
   </>
@@ -77,14 +88,16 @@ const VARIANTES: Record<string, Variante> = {
 }
 
 const MOTIVOS: Record<string, string> = {
-  vacia: 'no puede estar vacío ni superar el largo permitido.',
-  corta: 'necesita al menos 10 caracteres.',
-  larga: 'no puede superar 2000 caracteres.',
-  formato: 'no puede estar vacío ni superar el largo permitido.',
+  vacia: 'no puede estar vacío.',
+  corta: `necesita al menos ${MIN_PREGUNTA} caracteres.`,
+  larga: `no puede superar ${MAX_PREGUNTA} caracteres.`,
+  formato: 'la solicitud no tiene el formato esperado.',
 }
 
-function textoValidacion(error: ApiError | null): string {
-  const motivo = String(error?.contrato?.details?.motivo ?? 'vacia')
+// El motivo llega del servidor (details.motivo) o de la validación del
+// navegador, cuando la pregunta ni siquiera se envió.
+function textoValidacion(error: ApiError | null, motivoLocal?: MotivoPregunta | null): string {
+  const motivo = String(error?.contrato?.details?.motivo ?? motivoLocal ?? 'vacia')
   return `Revisa el texto: ${MOTIVOS[motivo] ?? MOTIVOS.vacia}`
 }
 
@@ -100,15 +113,16 @@ export function IdSoporte({ id }: { id: string | null }) {
   </p>
 }
 
-export function TarjetaError({ error, requestId, onReintentar, onCorregir }: {
+export function TarjetaError({ error, motivo = null, requestId, onReintentar, onCorregir }: {
   error: ApiError | null
+  motivo?: MotivoPregunta | null
   requestId: string | null
   onReintentar: () => void
   onCorregir: () => void
 }) {
   const codigo = error?.code ?? 'VALIDATION_ERROR'
   const variante = VARIANTES[codigo] ?? { titulo: 'No pudimos completar la consulta', icono: 'error', accion: error?.retryable === false ? 'ninguna' : 'reintentar', disposicion: 'apilada' as const }
-  const mensaje = codigo === 'VALIDATION_ERROR' ? textoValidacion(error) : error?.message
+  const mensaje = codigo === 'VALIDATION_ERROR' ? textoValidacion(error, motivo) : error?.message
   const accion = variante.accion === 'reintentar' && error?.retryable !== false
     ? <Button onClick={onReintentar}>{variante.disposicion === 'apilada' && codigo === 'RETRIEVAL_ERROR' ? <><Icon name="refresh" />Reintentar</> : 'Reintentar'}</Button>
     : variante.accion === 'corregir' ? <Button onClick={onCorregir}>Corregir pregunta</Button> : null

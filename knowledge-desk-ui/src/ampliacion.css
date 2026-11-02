@@ -383,3 +383,100 @@ button.text-link { background: none; border: 0; padding: 0; }
   .answer-indicators .request-id { margin-left: 0; width: 100%; }
   .doc-view-title { font-size: 24px; line-height: 32px; }
 }
+
+/* --- Colección local del navegador (IndexedDB) ----------------------------- */
+/* Documentos locales, su visor y la búsqueda por términos. Reutiliza la tabla,
+   la zona de carga, los diálogos y las tarjetas de fuentes de arriba. */
+.local-heading { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px 24px; }
+.local-cta { gap: 8px; text-transform: none; letter-spacing: 0; font-size: 14px; border-radius: 4px; background: #0f3d2e; }
+.local-cta:hover { background: #134e3a; }
+/* Nota discreta de almacenamiento; el detalle técnico va plegado. */
+.local-notice { margin: -22px 0 26px; font-size: 13.5px; line-height: 20px; color: #4b5563; }
+.local-notice > p { display: flex; align-items: flex-start; gap: 8px; }
+.local-notice > p + p { margin-top: 4px; padding-left: 26px; }
+.local-notice > p .material-symbols-outlined { font-size: 18px; margin-top: 1px; color: #6b7280; }
+.local-notice details { margin-top: 4px; padding-left: 26px; }
+.local-notice summary { cursor: pointer; width: fit-content; font-size: 12.5px; color: #0f3d2e; }
+.local-notice ul { margin-top: 6px; padding-left: 18px; list-style: disc; font-size: 12.5px; line-height: 19px; }
+.local-notice li + li { margin-top: 2px; }
+.local-notice code { font: 500 12px/18px ui-monospace, 'Cascadia Mono', Consolas, monospace; overflow-wrap: anywhere; }
+.local-notice a { color: #0f3d2e; text-decoration: underline; text-underline-offset: 3px; }
+.local-state { font-size: 15px; color: #374151; white-space: nowrap; }
+.local-status { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
+.local-status .status-note { margin-top: 0; color: #6b7280; }
+.notice:has(> p) { flex-wrap: wrap; }
+.notice > p { flex: 1 1 calc(100% - 30px); min-width: 0; overflow-wrap: anywhere; }
+.notice-action { margin-left: 26px; padding: 0 2px; font-size: 13px; font-weight: 600; color: inherit; text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; }
+.modal-deleted-local { width: min(580px, calc(100% - 32px)); }
+.modal-deleted-local .counter-tile { min-width: 0; }
+.modal-deleted-local .counter-tile div { min-width: 0; overflow-wrap: anywhere; }
+.document-list-section > .notice, .document-table-wrap > .notice { margin: 12px 0; }
+.loading-line { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--color-muted); }
+.documents-empty.loading-line { justify-content: center; }
+.local-collection-link { margin-left: auto; font-size: 12px; font-weight: 600; color: #0f3d2e; }
+.local-log { margin-top: 32px; }
+.local-log h2 { font: 500 22px/30px var(--font-editorial); color: #1f2a26; }
+.local-log > p { margin: 4px 0 12px; font-size: 13px; line-height: 19px; color: #6b7280; }
+.local-log-list { display: flex; flex-direction: column; gap: 6px; }
+.local-log-list li { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto auto auto auto; align-items: center; gap: 12px; padding: 10px 14px; background: white; border: 1px solid #ececec; border-radius: 6px; font-size: 13px; color: #374151; }
+.local-log-op { font-weight: 600; color: #1f2937; }
+.local-log-doc { overflow-wrap: anywhere; }
+.local-log-list time { color: #6b7280; white-space: nowrap; }
+.local-log-list code { font: 12px/18px ui-monospace, 'Cascadia Mono', Consolas, monospace; color: #6b7280; }
+.local-log-more { margin-top: 10px; }
+.modal-local-result .result-hero p { font-size: 14.5px; line-height: 22px; overflow-wrap: anywhere; }
+/* Insignias por formato, con la misma hoja que la del JSON. */
+.file-badge-local .material-symbols-outlined { font-size: 40px; font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 40; }
+.file-badge-local .file-badge-label { color: inherit; }
+.file-badge-local.file-badge-large .material-symbols-outlined { font-size: 46px; }
+.file-badge-pdf { color: #b42318; }
+.file-badge-docx { color: #1f4fa8; }
+.file-badge-txt { color: #4b5563; }
+.file-badge-docx .file-badge-label { font-size: 7.5px; }
+/* Visor de un documento local. */
+.doc-view .results-toolbar { flex-wrap: wrap; margin-bottom: 28px; }
+.local-text { max-height: 60svh; overflow: auto; margin: 0; padding: 16px 18px; background: white; border: 1px solid #bfc9c34d; border-radius: 4px; font: 400 15px/25px var(--font-sans); color: #1f2937; white-space: pre-wrap; overflow-wrap: anywhere; }
+.doc-view .doc-fragment-meta code { font: 500 12px/18px ui-monospace, 'Cascadia Mono', Consolas, monospace; color: #4b5563; overflow-wrap: anywhere; }
+/* Búsqueda local. */
+.local-search-page { max-width: 1020px; }
+.local-search-form { margin-top: 4px; }
+.local-search-form .button-consultar { min-width: 0; white-space: nowrap; }
+.local-search-loading, .local-search-error, .local-search-hint { margin-top: 28px; }
+.local-search-hint { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; line-height: 20px; color: #4b5563; }
+.local-search-hint .material-symbols-outlined { font-size: 18px; }
+.local-results { margin-top: 40px; }
+.local-results-note { margin: -12px 0 20px; font-size: 13.5px; line-height: 20px; color: #4b5563; }
+.local-source h3 { overflow-wrap: anywhere; }
+.local-source .source-type { gap: 8px; }
+.local-source .file-badge { width: 30px; height: 36px; }
+.local-source .file-badge .material-symbols-outlined { font-size: 32px; }
+.local-source .file-badge-label { font-size: 7px; }
+.local-excerpt { margin: 0; padding: 12px 16px; border-left: 3px solid #2f6b58; background: #f6f8f5; }
+.local-excerpt p { font-size: 15px; line-height: 24px; color: #1f2937; white-space: pre-wrap; overflow-wrap: anywhere; }
+.local-excerpt mark { padding: 0 1px; border-radius: 2px; background: #fdf0b3; color: inherit; }
+.local-excerpt footer { margin-top: 6px; font-size: 12px; color: #6b7280; }
+.local-search-page .empty-results .button { margin-top: 8px; }
+/* Acceso desde Consulta. */
+.local-entry { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 12px; margin-top: -16px; font-size: 12.5px; line-height: 18px; color: #626b65; }
+.local-entry .text-link { font-weight: 600; color: var(--color-primary); }
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .local-log-list li { grid-template-columns: 110px minmax(0, 1fr) auto auto; }
+  .local-log-list li > :nth-child(5), .local-log-list li > :nth-child(6) { display: none; }
+}
+@media (max-width: 767px) {
+  .local-heading .local-cta { width: 100%; }
+  .local-notice { margin-top: -12px; }
+  .local-status { align-items: flex-end; }
+  .local-collection-link { margin-left: 0; }
+  .local-log-list li { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; }
+  .local-log-doc { grid-column: 1 / -1; order: -1; font-weight: 500; }
+  .local-log-list li > code { display: none; }
+  .local-search-form .button-consultar { white-space: normal; }
+  .local-entry { margin-top: -8px; }
+}
+
+/* --- Longitud de la pregunta ---------------------------------------------- */
+.question-counter { margin-top: 6px; font-size: 12px; line-height: 16px; color: #626b65; text-align: right; }
+.question-counter-over { color: var(--color-error); font-weight: 600; }
+.search-form .question-counter { margin-top: 8px; }

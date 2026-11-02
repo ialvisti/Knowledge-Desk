@@ -4,9 +4,11 @@
 # - Motor de consulta: el servicio REAL de ForUsGuide (KD_MODO=forusguide,
 #   POST /api/v1/knowledge-question). Las respuestas y fuentes salen de su corpus.
 # - Solo consulta: sin PINECONE_*, Knowledge Desk no tiene indexación y nunca
-#   escribe, siembra ni borra en el índice compartido de ForUsGuide. Documentos lo
-#   indica y no permite cargar artículos. Con KD_ACCESO_PUBLICO=true el servidor
-#   se niega a arrancar si alguien añade PINECONE_API_KEY o PINECONE_INDEX_HOST.
+#   escribe, siembra ni borra en el índice compartido de ForUsGuide. El servidor
+#   no admite cargas: Documentos abre la colección del navegador (IndexedDB de
+#   cada usuario), independiente de ForUsGuide y de este servidor. Con
+#   KD_ACCESO_PUBLICO=true el servidor se niega a arrancar si alguien añade
+#   PINECONE_API_KEY o PINECONE_INDEX_HOST.
 # - Acceso público (KD_ACCESO_PUBLICO=true): sin inicio de sesión. Cada consulta
 #   llama a ForUsGuide con la clave del servidor y consume su cuota.
 # - Plan free, sin disco: el registro local vive en /tmp y es temporal

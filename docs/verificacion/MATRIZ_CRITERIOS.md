@@ -1,11 +1,18 @@
 # Matriz de trazabilidad: 51 criterios de aceptación (HU01–HU10)
 
 Fuente de los criterios: `docs/negocio/RQ01v1_Historia_de_Usuario_Knowledge_Desk_16092026_V1.pdf`
-(original, sin modificar). Decisión de producto vigente: el corpus está formado
-**solo por artículos de conocimiento JSON canónicos** (`metadata` + `details`,
-kb_article_v2). PDF, DOCX y TXT no forman parte del producto; los PDF de `IMAGENES/`
-son solo referencia gráfica. Donde un criterio habla de "documento", "formato
+(original, sin modificar). Las columnas de esta matriz describen los **modos del
+servidor**: su corpus está formado por artículos JSON canónicos (`metadata` +
+`details`, kb_article_v2). Donde esas columnas hablan de "documento", "formato
 aprobado" o "extraer texto", se aplica a ese JSON.
+
+La colección local añadida para la presentación admite PDF, DOCX, TXT y artículos
+JSON en el navegador, con extracción, fragmentación, reemplazo y eliminación
+atómicos. Tiene almacenamiento e índice propios por navegador y origen. Su búsqueda
+es por términos, sin embeddings ni generación de respuestas: no cambia los estados
+de recuperación semántica de esta matriz ni modifica el corpus de ForUsGuide.
+El alcance y la evidencia de esa colección se documentan por separado en
+[DOCUMENTOS_LOCALES.md](DOCUMENTOS_LOCALES.md).
 
 ## Cómo leer esta matriz
 
@@ -107,7 +114,7 @@ Evidencia:
 
 | # | Criterio | Implementación y evidencia | Local | ForUsGuide |
 | --- | --- | --- | --- | --- |
-| 22 | El backend calcula el indicador con una regla reproducible y lo entrega con la respuesta | `kd-cobertura-v1` (`coverage.ts`); respeta `confidence_note` de ForUsGuide. S "cobertura alta, límite, baja y ausencia total…", "respeta el nivel del motor…" | Cumple · aprobación pendiente (fórmula y umbrales) | Cumple · aprobación pendiente (nivel del motor de ForUsGuide + umbral de relevancia) |
+| 22 | El backend calcula el indicador con una regla reproducible y lo entrega con la respuesta | `kd-cobertura-v1` (`coverage.ts`); el `confidence_note` de ForUsGuide es un techo que la evidencia y los vacíos declarados (normalizados) pueden bajar con la misma regla, nunca subir. S "cobertura alta, límite, baja y ausencia total…", "respeta el nivel del motor…", "el nivel del motor es un techo que la evidencia y los vacíos solo pueden bajar" | Cumple · aprobación pendiente (fórmula y umbrales) | Cumple · aprobación pendiente (nivel del motor de ForUsGuide + umbral de relevancia) |
 | 23 | La interfaz muestra el nivel de forma comprensible | Insignia y explicación; aclara que no es una probabilidad. UI "…cobertura explicada…" | Cumple | Cumple |
 | 24 | Por debajo del umbral se informa que la documentación no es suficiente | Tarjeta "Documentación insuficiente". UI "la insuficiencia…"; C `03` | Cumple | Cumple |
 | 25 | Una cobertura insuficiente impide presentar afirmaciones generadas | `answer: null`, `key_points: []`, `sources: []`. S "con cobertura insuficiente no presenta la respuesta generada…" | Cumple | Cumple |

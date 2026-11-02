@@ -155,18 +155,27 @@ test.describe('HU10 · errores diferenciados con ID de soporte', () => {
     })
   }
 
-  test('validación: la pregunta corta la rechaza el servidor y se corrige desde la misma pantalla', async ({ page }) => {
-    await simularServidor(page, { consulta: cuerpo => (cuerpo.question.length < 10 ? ERRORES.validacion : { status: 200, body: contratoRespuesta }) })
+  test('validación: una pregunta corta en la URL no se envía y se corrige desde la misma pantalla', async ({ page }) => {
+    const registro = await simularServidor(page)
     await page.goto(resultados('hola'))
     await expect(page.getByRole('heading', { name: 'La pregunta no es válida' })).toBeVisible()
     await expect(page.getByText('Revisa el texto: necesita al menos 10 caracteres.')).toBeVisible()
-    await expect(page.getByText('ID de soporte: req-1b44d0a7')).toBeVisible()
+    await expect(page.getByText('Sin ID de soporte: la solicitud no se envió.')).toBeVisible()
     await page.getByRole('button', { name: 'Corregir pregunta' }).click()
     await expect(page.getByLabel('Escribe tu pregunta')).toBeFocused()
     await page.getByLabel('Escribe tu pregunta').fill('')
     await page.getByRole('button', { name: 'Consultar' }).click()
     await expect(page.getByText('Escribe una pregunta para consultar.')).toBeVisible()
     await expect(page.getByText('Sin ID de soporte: la solicitud no se envió.')).toBeVisible()
+    expect(registro.consultas).toHaveLength(0)
+  })
+
+  test('validación del servidor: un 422 se muestra con su motivo y su ID de soporte', async ({ page }) => {
+    await simularServidor(page, { consulta: () => ERRORES.validacion })
+    await page.goto(resultados(PREGUNTA_ROLLOVER))
+    await expect(page.getByRole('heading', { name: 'La pregunta no es válida' })).toBeVisible()
+    await expect(page.getByText('Revisa el texto: necesita al menos 10 caracteres.')).toBeVisible()
+    await expect(page.getByText('ID de soporte: req-1b44d0a7')).toBeVisible()
   })
 
   test('sin conexión con el servidor se informa sin inventar un ID de soporte del servidor', async ({ page }) => {

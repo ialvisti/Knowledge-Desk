@@ -1,7 +1,10 @@
 import { KdError } from '../errors.ts'
 
+// Máximo de 100 caracteres: decisión del usuario del 2026-11-01. El mínimo de 10
+// es la configuración heredada, alineada con el backend de ForUsGuide; ninguna
+// historia de usuario lo fija.
 export const MIN_PREGUNTA = 10
-export const MAX_PREGUNTA = 2000
+export const MAX_PREGUNTA = 100
 
 // Se valida antes de iniciar cualquier recuperación o generación (HU10). La
 // longitud se mide en puntos de código, igual que el backend de ForUsGuide.

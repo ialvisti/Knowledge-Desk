@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/cliente'
+import { motivoPregunta, validarPregunta, type MotivoPregunta } from '../api/servicios'
 import type { ContratoConsulta } from '../api/tipos'
 import { BarraConsulta, Contradicciones, InsigniaCobertura, MarcoConsulta, PanelContrato, TarjetaError, TarjetaFuente, TarjetaInsuficiencia } from '../components/consulta'
 import { SearchForm } from '../components/SearchForm'
@@ -13,7 +14,8 @@ import { useServidor } from '../state/servidor'
 
 const TIMEOUT_POR_DEFECTO = 90_000
 
-function anuncio(fase: string, contrato: ContratoConsulta | null, error: ApiError | null): string {
+function anuncio(fase: string, contrato: ContratoConsulta | null, error: ApiError | null, invalida: string | null): string {
+  if (invalida) return `La pregunta no es válida. ${invalida}`
   if (fase === 'cargando') return 'Consultando la base de conocimiento. Puede tardar unos segundos.'
   if (fase === 'verificando') return 'Comprobando si la documentación cambió desde esta consulta.'
   if (error) return `No pudimos responder. ${error.message}`
@@ -28,7 +30,10 @@ export function Resultados() {
   const navigate = useNavigate()
   const { estado } = useServidor()
   const pregunta = params.get('q')?.trim() ?? ''
-  const consulta = useConsulta(pregunta, `${location.key}:${pregunta}`, estado?.consultaTimeoutMs ?? TIMEOUT_POR_DEFECTO)
+  // Una URL directa con una pregunta fuera de rango no se envía al servidor:
+  // se muestra la validación, igual que desde la barra de búsqueda.
+  const motivoUrl = pregunta ? motivoPregunta(pregunta) : null
+  const consulta = useConsulta(motivoUrl ? '' : pregunta, `${location.key}:${pregunta}`, estado?.consultaTimeoutMs ?? TIMEOUT_POR_DEFECTO)
   const ejemplos = useEjemplos()
 
   const resultado = consulta.fase === 'lista' ? consulta.resultado : null
@@ -47,13 +52,21 @@ export function Resultados() {
 
   const nuevaConsulta = (texto: string) => navigate(`/resultados?${new URLSearchParams({ q: texto })}`)
   const input = useRef<HTMLInputElement>(null)
-  // El aviso de pregunta vacía pertenece a la entrada del historial donde ocurrió.
-  const [vaciaEn, setVaciaEn] = useState<string | null>(null)
-  const vaciaLocal = vaciaEn === location.key
-  const setVaciaLocal = (vacia: boolean) => setVaciaEn(vacia ? location.key : null)
+  // El aviso de pregunta no válida pertenece a la entrada del historial donde ocurrió.
+  const [invalidaEn, setInvalidaEn] = useState<{ clave: string; motivo: MotivoPregunta } | null>(null)
+  const invalidaLocal = invalidaEn?.clave === location.key ? invalidaEn.motivo : null
+  const marcarInvalida = (motivo: MotivoPregunta | null) => setInvalidaEn(motivo ? { clave: location.key, motivo } : null)
 
   let contenido
-  if (consulta.fase === 'inactiva') {
+  if (motivoUrl) {
+    contenido = <div className="consulta-frame">
+      <MarcoConsulta>
+        <BarraConsulta key={`url-${pregunta}`} inicial={pregunta} errorInicial={validarPregunta(pregunta)} onConsultar={nuevaConsulta} onInvalida={marcarInvalida} refInput={input}>
+          <TarjetaError error={null} motivo={invalidaLocal ?? motivoUrl} requestId={null} onReintentar={() => {}} onCorregir={() => input.current?.focus()} />
+        </BarraConsulta>
+      </MarcoConsulta>
+    </div>
+  } else if (consulta.fase === 'inactiva') {
     contenido = <section className="empty-results">
       <Icon name="search_off" />
       <h2>Comienza con una pregunta</h2>
@@ -82,9 +95,9 @@ export function Resultados() {
     // la validación sin ID de soporte.
     contenido = <div className="consulta-frame">
       <MarcoConsulta>
-        <BarraConsulta key={`${requestId}-${pregunta}`} inicial={pregunta} onConsultar={nuevaConsulta} onInvalida={setVaciaLocal} refInput={input}>
-          {vaciaLocal
-            ? <TarjetaError error={null} requestId={null} onReintentar={consulta.reintentar} onCorregir={() => input.current?.focus()} />
+        <BarraConsulta key={`${requestId}-${pregunta}`} inicial={pregunta} onConsultar={nuevaConsulta} onInvalida={marcarInvalida} refInput={input}>
+          {invalidaLocal
+            ? <TarjetaError error={null} motivo={invalidaLocal} requestId={null} onReintentar={consulta.reintentar} onCorregir={() => input.current?.focus()} />
             : <>
               <TarjetaError error={error} requestId={requestId} onReintentar={consulta.reintentar} onCorregir={() => input.current?.focus()} />
               {error.contrato && <PanelContrato datos={error.contrato} />}
@@ -99,10 +112,10 @@ export function Resultados() {
   }
 
   const fase = consulta.fase
-  return <main id="contenido" tabIndex={-1} ref={main} className={`page-container results-page ${error ? 'results-page-error' : ''} ${contrato?.outcome === 'insufficient' ? 'results-page-insufficient' : ''}`}>
+  return <main id="contenido" tabIndex={-1} ref={main} className={`page-container results-page ${error || motivoUrl ? 'results-page-error' : ''} ${contrato?.outcome === 'insufficient' ? 'results-page-insufficient' : ''}`}>
     {/* Región viva permanente: si apareciera junto con su texto, los lectores
         de pantalla no la anunciarían de forma fiable. */}
-    <p className="sr-only" role="status" aria-live="polite">{anuncio(fase, contrato, error)}</p>
+    <p className="sr-only" role="status" aria-live="polite">{anuncio(fase, contrato, error, motivoUrl ? validarPregunta(pregunta) : null)}</p>
     {contenido}
   </main>
 }

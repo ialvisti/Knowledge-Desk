@@ -1,0 +1,28 @@
+{
+  "larga": {
+    "caracteres": 1036,
+    "http": 422,
+    "code": "VALIDATION_ERROR",
+    "motivo": "larga",
+    "request_id": "req-25b8e45c"
+  },
+  "corta": {
+    "caracteres": 100,
+    "http": 200,
+    "outcome": "insufficient",
+    "answer": null,
+    "fuentes": 0,
+    "coverage": {
+      "level": "baja",
+      "label": "Cobertura baja",
+      "explanation": "El servicio de consulta declaró que la documentación recuperada no cubre partes de la pregunta. No es suficiente para responder con confianza.",
+      "sufficient": false,
+      "relevant_fragments": 22,
+      "total_fragments": 22,
+      "documents": 11,
+      "policy": "kd-cobertura-v1",
+      "basis": "politica"
+    },
+    "request_id": "req-cdf1d03d"
+  }
+}

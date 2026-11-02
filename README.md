@@ -28,6 +28,16 @@ transacciones y nada se envía a clientes.
     vivo sin credenciales se verificó el 2026-10-22 sobre el despliegue anterior
     (`4a75c39`).
   - Detalle en el [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md).
+- **Nuevo en el código (2026-11-01), aún sin registrar en un despliegue**:
+  [documentos locales en el navegador](#documentos-locales-en-el-navegador-demostración).
+  Es una colección de demostración aparte para presentar la gestión de documentos donde
+  el servidor no tiene indexación.
+- **Verificación del 2026-11-01**: 103 pruebas del servidor y 105 pruebas de
+  navegador/E2E correctas; build, tipos y lint correctos. Se generaron y revisaron
+  [10 capturas de documentos](docs/verificacion/documentos-locales/index.html).
+  El smoke del build de producción pasó contra la API real en localhost, sin
+  servicios remotos ni mutaciones de documentos en el servidor. La auditoría de
+  dependencias de producción de la interfaz no detectó vulnerabilidades.
 - **Pendiente** (ver [NEXT_STEPS.md](NEXT_STEPS.md)):
   - evaluación de calidad y latencia con una muestra validada;
   - aceptación de negocio de cinco propuestas configurables;
@@ -145,6 +155,7 @@ Cada consulta, carga o reemplazo con servicios reales consume llamadas al modelo
 | `scripts\verificar.ps1` | Servidor: typecheck, lint, pruebas y `npm audit`. Interfaz: build, lint, `npm audit` y Playwright (escritorio, móvil y E2E contra el stack simulado). |
 | `npm run verificar` (raíz) | Lo mismo sin las auditorías. Es lo que ejecuta la CI (`.github/workflows/verificar.yml`, Node 24.14, Chromium, sin secretos). |
 | `scripts\capturas.ps1` | Regenera las 23 capturas de `docs/verificacion/` contra el stack simulado y [`comparacion.html`](docs/verificacion/comparacion.html). `-SoloComparacion` solo regenera la página. |
+| `npx playwright test tests/capturas/documentos-locales.spec.ts --project=capturas` (en `knowledge-desk-ui`) | Capturas de la colección local en `docs/verificacion/documentos-locales/`, con IndexedDB real. No sobrescribe las 23 anteriores. |
 
 Resultados del 2026-10-22:
 
@@ -162,6 +173,11 @@ Resultados del 2026-10-22:
 La suite de pruebas versionada (la de la CI) usa artículos JSON sintéticos y
 simuladores locales, y no llama a servicios reales. No hay corpus privado en el
 repositorio.
+
+La revisión del 2026-11-01 sobre la longitud de la pregunta y las respuestas del motor
+sin sustento está en
+[docs/verificacion/CONSULTA_VALIDACION.md](docs/verificacion/CONSULTA_VALIDACION.md),
+con su diagnóstico, sus pruebas y sus límites pendientes.
 
 Aparte de esa suite hay dos pruebas **operacionales reales**, separadas de las
 cifras anteriores. El [registro del despliegue](docs/verificacion/DEPLOY_RENDER.md)
@@ -206,8 +222,10 @@ Despliegues y prueba en vivo:
   Knowledge Desk no tiene indexación y nunca escribe, siembra ni borra en el índice
   compartido de ForUsGuide. Con el acceso público, el servidor se niega a arrancar si
   aparecen.
-  - Documentos lo dice ("Las consultas usan el corpus de ForUsGuide…") y no permite
-    cargar.
+  - Documentos no carga nada en el servidor. Al leer `indexacion.configurada: false`
+    abre la [colección local del navegador](#documentos-locales-en-el-navegador-demostración),
+    que no toca el servidor ni ForUsGuide. Antes de ese cambio, mostraba el aviso "Las
+    consultas usan el corpus de ForUsGuide…" con la carga deshabilitada.
   - `/api/estado` devuelve `indexacion.configurada: false` y lista esas dos variables
     en `faltan`, a propósito.
 - **Fuentes externas**: ForUsGuide no expone el JSON original de sus artículos. Al
@@ -235,12 +253,60 @@ para probar el modo `local`.
 La persistencia (plan de pago con disco) es un paso futuro opcional, **no
 autorizado**. Ver [NEXT_STEPS.md](NEXT_STEPS.md).
 
+## Documentos locales en el navegador (demostración)
+
+Sirve para presentar la gestión de documentos (HU07–HU09) en la vista previa de Render,
+que es solo consulta, sin disco de Render, servicios de pago ni secretos en el cliente.
+Guía de prueba, alcance y evidencias:
+[docs/verificacion/DOCUMENTOS_LOCALES.md](docs/verificacion/DOCUMENTOS_LOCALES.md).
+
+- **Dónde.**
+  - `/documentos` la abre automáticamente cuando el servidor declara
+    `indexacion.configurada: false`.
+  - Con indexación real, `/documentos` sigue siendo la administración del servidor, con
+    un enlace a `/documentos?coleccion=local`.
+  - Visor en `/documentos/local/:id` y búsqueda en `/consulta-local`, enlazada también
+    desde Consulta.
+- **Qué guarda.** PDF, DOCX, TXT y artículos JSON kb_article_v2, hasta 50 MB. Todo en
+  IndexedDB: los bytes originales con su SHA-256, el texto extraído, los fragmentos y
+  un registro técnico de cada operación confirmada.
+- **Reemplazo y eliminación.**
+  - El reemplazo pide un archivo nuevo y una confirmación. Conserva el identificador y
+    sube la versión. Una eliminación pide confirmación.
+  - Cada operación es una transacción: si falla, la versión anterior queda intacta y la
+    interfaz lo comprueba releyendo IndexedDB, con opción de reintento.
+  - Los conteos son de lo guardado en el navegador; no hay embeddings ni vectores
+    remotos que retirar.
+- **Búsqueda por términos, sin generación de IA.** Devuelve extractos literales con su
+  documento y versión vigentes. Se repite cuando la colección cambia, así que un
+  documento reemplazado o borrado no reaparece con datos anteriores.
+- **Alcance, sin ambigüedad.**
+  - Es una colección distinta del corpus de ForUsGuide: no son fuentes indexadas del
+    motor remoto ni alimentan Consulta.
+  - El servidor de Knowledge Desk no recibe estos archivos. La vista no hace ninguna
+    escritura en `/api/documentos`.
+  - Pertenece a cada navegador y dirección (origen): no se comparte con otros usuarios,
+    equipos ni navegadores, y `localhost` y Render tienen colecciones distintas.
+  - Se pierde en ventanas privadas y al borrar los datos del sitio.
+  - Extracción en el navegador: PDF sin OCR, DOCX básica (solo párrafos del cuerpo) y
+    TXT en UTF-8, con un máximo de 20 MB de texto extraído.
+  - Necesita HTTPS o `localhost`.
+- **Presentación.** La interfaz usa nombres normales: Documentos, estado *Indexado* en
+  texto plano y **Buscar en documentos**. Solo una nota discreta dice que los archivos
+  se guardan en este navegador. El alcance técnico queda en *Detalles de
+  almacenamiento* y en la guía.
+
 ## Decisiones
 
 **Tomadas e implementadas**
 
-- El corpus son solo artículos JSON canónicos kb_article_v2. PDF, DOCX y TXT no se
-  aceptan. Los PDF de `docs/negocio/IMAGENES` son solo referencia de diseño.
+- El corpus **del servidor** son solo artículos JSON canónicos kb_article_v2. El
+  servidor no acepta PDF, DOCX ni TXT. Los PDF de `docs/negocio/IMAGENES` son solo
+  referencia de diseño.
+- Para presentar la gestión de documentos sin indexación en el servidor existe la
+  colección local del navegador, que sí admite PDF, DOCX y TXT. Es una demostración
+  aparte, con búsqueda por términos, y no cambia el corpus del servidor ni el de
+  ForUsGuide.
 - "Abrir el documento" muestra el JSON auténtico de la versión usada.
 - Interfaz y API en el mismo origen. Credenciales solo en el servidor. Acceso interno
   sin cuentas propias: credenciales de piloto o proxy de identidad.
@@ -272,11 +338,14 @@ autorizado**. Ver [NEXT_STEPS.md](NEXT_STEPS.md).
 ├── demo/
 │   ├── ejemplos-simulados.json          ejemplos del modo demostración
 │   ├── ejemplos-preview.json            ejemplos de la vista previa de Render
-│   └── articulo-sintetico-viaticos.json artículo JSON ficticio para cargar en la vista previa
+│   ├── articulo-sintetico-viaticos.json artículo JSON ficticio para cargar en la vista previa
+│   └── documentos-locales/              PDF, DOCX y TXT ficticios (v1, v2 y un vacío) para la colección local
 ├── scripts/                             instalar, simulado, iniciar, verificar, capturas (+ comun.ps1)
 ├── docs/
 │   ├── CONTRATO_KNOWLEDGE_QUESTION.md   contratos: consulta, artículos JSON y ForUsGuide
 │   ├── verificacion/                    matriz de 51 criterios, registro del despliegue, 23 capturas, comparacion.html
+│   │   ├── DOCUMENTOS_LOCALES.md        guía de prueba y alcance de la colección local
+│   │   └── documentos-locales/          capturas del flujo local (las genera su spec de Playwright)
 │   └── negocio/                         documentos y referencias de diseño originales (no se editan)
 ├── knowledge-desk-server/               API, pipeline de artículos JSON, acceso y pruebas (node --test)
 └── knowledge-desk-ui/                   interfaz React y pruebas Playwright (ver su README)

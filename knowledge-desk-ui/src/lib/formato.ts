@@ -28,9 +28,15 @@ export function afinidad(valor: number): string {
 export function tamano(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1).replace('.', ',')} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1).replace('.', ',')} GB`
 }
 
 export function plural(cantidad: number, singular: string, varios: string): string {
   return `${cantidad} ${cantidad === 1 ? singular : varios}`
+}
+
+// Comparación de nombres sin tildes, mayúsculas ni signos (filtro de Documentos).
+export function normalizar(valor: string): string {
+  return valor.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }

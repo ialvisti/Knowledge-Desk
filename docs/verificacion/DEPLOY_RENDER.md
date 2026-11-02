@@ -22,9 +22,13 @@
   - Render suspende un servicio gratuito tras unos 15 minutos sin tráfico; la primera
     petición al despertarlo tarda más.
   - Al despertar, reiniciar o redesplegar, los artículos cargados **se pierden** y
-    hay que volver a cargarlos. El pie de Documentos lo avisa. En el modo actual no
-    se cargan artículos y las consultas no se guardan en el servidor: no hay nada que
-    perder.
+    hay que volver a cargarlos. El pie de Documentos lo avisa. En el modo actual el
+    servidor no carga artículos ni guarda las consultas: no hay nada que perder en el
+    servidor.
+  - Desde la versión preparada para publicación, Documentos usa una colección del
+    navegador. Vive en el IndexedDB de cada usuario, independiente de ForUsGuide y del
+    servidor, y no se pierde al reiniciar Render, pero sí al borrar los datos del
+    navegador. Ver [DOCUMENTOS_LOCALES.md](DOCUMENTOS_LOCALES.md).
 - **Coste.** El cómputo es del plan gratuito, sin plan de pago ni disco.
   - En `9337e67`, cada carga (embeddings) y cada consulta (embeddings y chat) llamaban
     a la API de OpenAI.
@@ -160,6 +164,24 @@ Desplegado en `dep-dbd779ifngtc73fron20`.
   credenciales de Pinecone.
 - Calidad sin medir y latencia observada de 25 s, fuera de la meta.
 
+## Versión preparada para publicación (pendiente de desplegar)
+
+Incluye dos funciones sobre `5c1df33`. El commit y el identificador del despliegue se
+anotarán aquí cuando se publique y se verifique en Render.
+
+- **Documentos en el navegador.** Sin indexación en el servidor, Documentos abre una
+  colección en el IndexedDB de cada usuario, independiente de ForUsGuide. Ver
+  [DOCUMENTOS_LOCALES.md](DOCUMENTOS_LOCALES.md).
+- **Validación de la consulta y cobertura.**
+  - Preguntas de 10 a 100 caracteres, validadas en la interfaz y en el servidor antes
+    de llamar a ForUsGuide.
+  - El nivel de cobertura de ForUsGuide pasa a ser un techo que la evidencia y los
+    vacíos declarados pueden bajar.
+
+  Ver [CONSULTA_VALIDACION.md](CONSULTA_VALIDACION.md).
+- **Configuración de Render.** Sin cambios: el blueprint solo actualiza sus
+  comentarios.
+
 ## Smoke real del 2026-10-22 (18:21–18:25 UTC), con acceso protegido (histórico)
 
 Se hizo sobre el despliegue `9337e67`, que aún exigía credenciales de piloto. Usó un
@@ -212,13 +234,18 @@ Es la suite versionada, con servicios simulados; no llama a servicios reales.
 2. En **Consulta**, elige un ejemplo o pregunta, por ejemplo, "Como hacer un retiro".
    En la prueba en vivo, la respuesta tardó unos 25 s.
 3. Abre una fuente: verás sus fragmentos indexados en ForUsGuide, no el JSON original.
-4. **Documentos** explica que las consultas usan el corpus de ForUsGuide y no permite
-   cargar.
+4. **Documentos**: el servidor no tiene indexación y no admite cargas. Con la versión
+   preparada para publicación, la pantalla abre la colección del navegador (PDF,
+   DOCX, TXT o JSON en el IndexedDB de cada usuario), independiente de ForUsGuide; ver
+   [DOCUMENTOS_LOCALES.md](DOCUMENTOS_LOCALES.md). El despliegue `5c1df33` todavía
+   muestra el aviso anterior con la carga deshabilitada.
 
 ## Probarla con el artículo sintético (modo `local`, histórico)
 
 Solo sirve con un despliegue en modo `local`, como `9337e67`. En la vista previa
-actual (modo `forusguide`), Documentos no permite cargar.
+actual (modo `forusguide`), el servidor no admite cargas. Con la versión preparada
+para publicación, Documentos abre la colección del navegador, que no indexa nada en el
+servidor ni en ForUsGuide.
 
 1. Descarga [`demo/articulo-sintetico-viaticos.json`](../../demo/articulo-sintetico-viaticos.json).
    Es el artículo de la v1.0 del smoke ("Ejemplo SINTÉTICO: viáticos

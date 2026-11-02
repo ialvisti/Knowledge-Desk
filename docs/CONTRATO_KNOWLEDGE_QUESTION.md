@@ -38,7 +38,7 @@ en la cabecera `X-Request-ID`:
 
 | Código | HTTP | Cuándo |
 | --- | --- | --- |
-| `VALIDATION_ERROR` | 422 | Pregunta vacía, de menos de 10 o más de 2000 caracteres, o cuerpo mal formado (`details.motivo`: `vacia`, `corta`, `larga`, `formato`). Se valida **antes** de llamar a cualquier servicio. |
+| `VALIDATION_ERROR` | 422 | Pregunta vacía, de menos de 10 o más de 100 caracteres (puntos de código, sin los espacios de los extremos), o cuerpo mal formado (`details.motivo`: `vacia`, `corta`, `larga`, `formato`). Se valida **antes** de llamar a cualquier servicio. La interfaz aplica la misma regla y no envía una pregunta fuera de rango. El máximo de 100 es una decisión del usuario del 2026-11-01; el mínimo de 10 es la configuración heredada, sin una historia de usuario que lo fije (ver `docs/verificacion/CONSULTA_VALIDACION.md`). |
 | `RETRIEVAL_ERROR` | 502 | Falló la recuperación (ForUsGuide `timeout`, `rate_limit`, `server_error`, `client_error`; o embeddings de la pregunta en modo local). |
 | `VECTOR_DB_UNAVAILABLE` | 503 | Base vectorial no disponible (ForUsGuide `circuit_open`, `transport`, `503 RAG Engine not initialized`; o índice local). |
 | `AI_PROVIDER_ERROR` | 502 | Falló el proveedor que redacta (excepción `unknown` de ForUsGuide, respuesta fija "Unable to generate…", modelo local sin texto). |
@@ -126,9 +126,12 @@ Reglas que el servidor garantiza:
   mismo texto de un artículo cuenta una sola vez: el chunker repite las reglas de
   elegibilidad en dos fragmentos.
 - **Cobertura `kd-cobertura-v1`.** Es una regla reproducible y **no** es una
-  probabilidad de acierto. Si el motor declara su nivel (ForUsGuide `confidence_note`),
-  se respeta. Si no, se calcula a partir de la media de las 5 mejores afinidades, de
-  los fragmentos relevantes y de los vacíos declarados (ver
+  probabilidad de acierto. La política calcula un nivel a partir de la media de las 5
+  mejores afinidades, de los fragmentos relevantes y de los vacíos declarados
+  (`metadata.coverage_gaps`, sin blancos ni repetidos). Si el motor declara su nivel
+  (ForUsGuide `confidence_note`), ese nivel es un techo: se usa el menor entre el del
+  motor y el de la política, de modo que la evidencia y los vacíos pueden bajarlo pero
+  nunca subirlo. Si no hay nivel del motor, se usa el de la política (ver
   `knowledge-desk-server/src/consulta/coverage.ts`). Solo `alta` y `parcial` son
   suficientes.
 - **Con cobertura insuficiente** no se presenta texto generado: `answer` es null y

@@ -23,7 +23,7 @@ export function Header() {
     document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape) }
   }, [open])
-  const enConsulta = pathname === '/' || pathname === '/resultados'
+  const enConsulta = pathname === '/' || pathname === '/resultados' || pathname === '/consulta-local'
   return <header className={`site-header ${pathname.startsWith('/documentos') ? 'site-header-documentos' : ''}`}>
     <div className="page-container header-inner">
       <Link to="/" className="brand" onClick={() => setOpen(false)}>Knowledge Desk</Link>

@@ -19,7 +19,7 @@ export const estado = {
   consulta: { configurada: true, motor: 'forusguide' },
   indexacion: { configurada: true, destino: 'Pinecone · namespace kb_articles' },
   faltan: [],
-  limites: { preguntaMin: 10, preguntaMax: 2000, archivoMaxBytes: 52428800, formatos: ['json'], esquema: 'kb_article_v2' },
+  limites: { preguntaMin: 10, preguntaMax: 100, archivoMaxBytes: 52428800, formatos: ['json'], esquema: 'kb_article_v2' },
   simulado: false,
   datosTemporales: false,
   consultaTimeoutMs: 90000,
@@ -97,6 +97,50 @@ export const contratoSinEvidencia = {
   request_id: 'req-5b77c210',
   coverage: { ...contratoInsuficiente.coverage, level: 'sin_evidencia', label: 'Sin evidencia', explanation: 'No se encontró ningún fragmento relevante en las fuentes aprobadas.', relevant_fragments: 0, total_fragments: 0, documents: 0 },
   found_documents: [],
+}
+
+// Caso reportado: la frase de la captura mide exactamente 100 caracteres; en
+// Render se envió repetida 9 veces (1036 caracteres), que ahora se rechaza.
+export const FRASE_VACACIONES = '¿Cuál es el proceso para solicitar mis vacaciones y a quién debo enviar la solicitud para aprobarla?'
+export const PREGUNTA_REPORTADA = Array.from({ length: 9 }, () => FRASE_VACACIONES).join(' La pregunta es: ')
+
+// Artículos y afinidad máxima observados en la llamada directa a ForUsGuide del
+// 2026-11-01 (23 fragmentos de 11 artículos). Los títulos se sustituyen por el
+// identificador y no se copia texto del corpus.
+const OBSERVADOS: [string, number, number][] = [
+  ['how_do_i_cancel_or_change_a_pending_distribution_request', 0.3325, 5],
+  ['401k_loan_basics_and_support_guide', 0.3079, 3],
+  ['can_i_take_money_from_my_401k_while_employed_your_options_explained', 0.3053, 4],
+  ['forusall_401k_hardship_withdrawal_complete_guide', 0.3032, 1],
+  ['eaca_refunds_after_401k_auto_enrollment', 0.2929, 1],
+  ['lt_trust_401k_loan_complete_guide_submission_repayment_support', 0.2901, 2],
+  ['lt_request_401k_termination_withdrawal_or_rollover', 0.2742, 2],
+  ['vanguard_how_to_submit_a_loan_request', 0.273, 2],
+  ['401k_force_out_process_sponsor_faq', 0.2693, 1],
+  ['401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance', 0.2647, 1],
+  ['can_i_split_my_401_k_rollover_between_multiple_providers', 0.2507, 1],
+]
+
+// Contrato que devuelve el servidor corregido con esa evidencia y el nivel
+// partially_covered observado en Render (ver la variante de regresión en
+// knowledge-desk-server/test/consulta-validacion.test.ts).
+export const contratoCasoVacaciones = {
+  ...contratoRespuesta,
+  request_id: 'req-6a1f0c3e',
+  question: FRASE_VACACIONES,
+  outcome: 'insufficient',
+  answer: null,
+  key_points: [],
+  coverage: {
+    level: 'baja', label: 'Cobertura baja', explanation: 'El servicio de consulta declaró que la documentación recuperada no cubre partes de la pregunta. No es suficiente para responder con confianza.',
+    sufficient: false, relevant_fragments: 23, total_fragments: 23, documents: 11, policy: 'kd-cobertura-v1', basis: 'politica',
+  },
+  sources: [],
+  found_documents: OBSERVADOS.map(([id, afinidad, fragmentos]) => ({
+    id, kind: 'external_article', title: id, file_name: null, article_id: id, href: `/fuentes/${id}`, document_id: null, version: null, location: null, affinity: afinidad, fragment_count: fragmentos,
+    fragments: [{ id: `${id}_fragmento`, affinity: afinidad, type: 'faqs', paths: [], operational: false, content: 'Contenido del fragmento sustituido.' }],
+  })),
+  retrieval: { ...contratoRespuesta.retrieval, fragments_retrieved: 23, articles_consulted: 11, sub_queries: ['proceso para solicitar vacaciones y persona o gerente que debe aprobar la solicitud'] },
 }
 
 export function errorContrato(code: string, message: string, request_id: string, status: number, details: Record<string, unknown> = {}) {

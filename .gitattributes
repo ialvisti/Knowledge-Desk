@@ -1,1 +1,4 @@
 demo/articulo-sintetico-viaticos.json -text
+# Archivos de prueba de la colección del navegador: se conservan byte a byte.
+demo/documentos-locales/** -text -whitespace
+demo/documentos-locales/*.pdf binary

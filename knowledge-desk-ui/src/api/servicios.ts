@@ -1,8 +1,9 @@
 import { pedir } from './cliente'
 import type { ArticuloExterno, ContratoConsulta, DetalleDocumento, DocumentoResumen, Ejemplos, EstadoServidor, Operacion } from './tipos'
 
+// Los mismos límites que valida el servidor (knowledge-desk-server/src/consulta/validate.ts).
 export const MIN_PREGUNTA = 10
-export const MAX_PREGUNTA = 2000
+export const MAX_PREGUNTA = 100
 export const MAX_ARCHIVO = 50 * 1024 * 1024
 // Knowledge Desk administra artículos de conocimiento kb_article_v2: JSON puro.
 export const FORMATOS = ['json'] as const
@@ -35,10 +36,32 @@ export const eliminarDocumento = (id: string) =>
   pedir<{ operacion: Operacion }>(`/api/documentos/${encodeURIComponent(id)}/eliminacion`, { json: { confirmado: true } })
 export const obtenerOperacion = (id: string) => pedir<{ operacion: Operacion }>(`/api/operaciones/${encodeURIComponent(id)}`)
 
-export function validarPregunta(pregunta: string): string | null {
-  const valor = pregunta.trim()
-  if (!valor) return 'Escribe una pregunta para consultar.'
+export type MotivoPregunta = 'vacia' | 'corta' | 'larga'
+
+// Misma regla que el servidor (validate.ts): se ignoran los espacios de los
+// extremos y se cuentan puntos de código, no unidades UTF-16. Así un emoji
+// cuenta como un carácter en los dos lados.
+export const largoPregunta = (pregunta: string) => Array.from(pregunta.trim()).length
+
+export function motivoPregunta(pregunta: string): MotivoPregunta | null {
+  const largo = largoPregunta(pregunta)
+  if (!largo) return 'vacia'
+  if (largo < MIN_PREGUNTA) return 'corta'
+  if (largo > MAX_PREGUNTA) return 'larga'
   return null
+}
+
+export function mensajePregunta(motivo: MotivoPregunta, largo: number): string {
+  if (motivo === 'vacia') return 'Escribe una pregunta para consultar.'
+  if (motivo === 'corta') return `La pregunta necesita al menos ${MIN_PREGUNTA} caracteres; tiene ${largo}.`
+  return `La pregunta tiene ${largo} caracteres y el máximo es ${MAX_PREGUNTA}. Acórtala para consultar.`
+}
+
+// Validación previa en el navegador: una pregunta fuera de rango no se envía.
+// El servidor vuelve a validarla antes de llamar a ningún servicio.
+export function validarPregunta(pregunta: string): string | null {
+  const motivo = motivoPregunta(pregunta)
+  return motivo ? mensajePregunta(motivo, largoPregunta(pregunta)) : null
 }
 
 const mb = (bytes: number) => Math.round(bytes / 1024 / 1024)

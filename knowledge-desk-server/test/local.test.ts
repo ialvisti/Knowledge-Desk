@@ -62,7 +62,8 @@ describe('Modo local · HU02 y HU03 con embeddings y redacción simulados', () =
 
   it('divide una pregunta de varios temas, unifica y deduplica antes de construir el contexto', async () => {
     proveedor.llamadas.length = 0
-    const contrato = await preguntar('¿Cuál es el plazo para pedir el reembolso de viáticos internacionales y qué documentos debo adjuntar?')
+    // 91 caracteres: dentro del máximo de 100 de la pregunta.
+    const contrato = await preguntar('¿Cuál es el plazo del reembolso de viáticos internacionales y qué documentos debo adjuntar?')
     assert.equal(contrato.retrieval.sub_queries.length, 2)
     const embeddings = proveedor.llamadas.find(llamada => llamada.ruta === '/embeddings')!
     assert.equal((embeddings.cuerpo.input as string[]).length, 3)

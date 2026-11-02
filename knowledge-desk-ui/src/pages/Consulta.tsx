@@ -1,6 +1,6 @@
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { SearchForm } from '../components/SearchForm'
-import { Nota } from '../components/ui'
+import { Icon, Nota } from '../components/ui'
 import { useEjemplos } from '../hooks/useEjemplos'
 import { useServidor } from '../state/servidor'
 
@@ -32,6 +32,11 @@ export function Consulta() {
           </div>
           : !ejemplos.cargando && <p className="suggestions-empty">{ejemplos.nota ?? 'Aún no hay ejemplos para el corpus actual.'}</p>}
       </div>
+      {/* Los archivos cargados en Documentos (guardados en el navegador) no alimentan esta consulta. */}
+      <p className="local-entry">
+        <Link to="/consulta-local" className="text-link"><Icon name="manage_search" />Buscar en documentos</Link>
+        <span>Busca palabras en los archivos que cargaste en Documentos.</span>
+      </p>
     </div>
     <div className="consultation-footnote"><Nota>{pie}</Nota></div>
   </main>

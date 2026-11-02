@@ -1,0 +1,15 @@
+{
+  "generadoEn": "2026-11-01T19:15:44.237Z",
+  "almacenamiento": "IndexedDB real del navegador; extracción PDF y DOCX real; búsqueda local por términos.",
+  "servidor": "API de capacidades sustituida dentro de Playwright: modo ForUsGuide sin indexación, equivalente a Render. No se muta el índice remoto.",
+  "archivos": [
+    "politica-viaticos-v1.pdf",
+    "politica-viaticos-v2.docx"
+  ],
+  "datos": "Ficticios, creados para demostración de clase.",
+  "falloControlado": {
+    "captura": "06-error-cuota-controlado.png",
+    "metodo": "IDBDatabase.prototype.transaction lanza QuotaExceededError solo en readwrite. Se restaura antes de la siguiente operación."
+  },
+  "comando": "npx playwright test tests/capturas/documentos-locales.spec.ts --project=capturas"
+}
