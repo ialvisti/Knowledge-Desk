@@ -1,8 +1,40 @@
+import { setTimeout as dormir } from 'node:timers/promises'
 import type { ForUsGuideConfig } from '../config.ts'
 import { KdError } from '../errors.ts'
 import type { ArticuloCompleto, ContextoConsulta, Evidencia, Motor, ResultadoMotor } from './motor.ts'
 
 type FetchImpl = typeof fetch
+
+// Inyectables en las pruebas: el reloj y la espera antes de reintentar.
+export interface OpcionesForUsGuide {
+  ahora?: () => number
+  esperar?: (ms: number, signal: AbortSignal) => Promise<unknown>
+}
+
+// Un 429 de ForUsGuide (o de la plataforma que lo publica) limita solicitudes
+// por un tiempo; no indica que el servicio esté caído. Se respeta Retry-After
+// completo: mientras dure, este servidor no vuelve a llamarlo, y solo si la
+// espera es breve una única consulta reintenta. Así los reintentos no alimentan
+// el límite.
+const ESPERA_SIN_INDICACION_S = 5
+const MAX_ESPERA_REINTENTO_S = 10
+
+// Retry-After admite segundos o una fecha HTTP (IMF-fixdate). Un valor que no
+// cumple el formato o que no se representa con exactitud en milisegundos se
+// trata como ausente.
+function segundosRetryAfter(valor: string | null, ahora: number): number | null {
+  const texto = valor?.trim() ?? ''
+  let segundos: number
+  if (/^\d+$/.test(texto)) segundos = Number(texto)
+  else if (/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(texto)) segundos = Math.ceil((Date.parse(texto) - ahora) / 1000)
+  else return null
+  return Number.isSafeInteger(segundos * 1000) ? segundos : null
+}
+
+function errorPorLimite(segundos: number): KdError {
+  const espera = segundos === 1 ? '1 segundo' : `${segundos} segundos`
+  return new KdError('UPSTREAM_ERROR', `El servicio de consulta está limitando las solicitudes. Inténtalo de nuevo en ${espera}.`, { upstream_status: 429, retry_after_s: segundos })
+}
 
 // Textos fijos con los que ForUsGuide responde 200 cuando el modelo devolvió
 // contenido vacío o JSON inválido (rag_engine.ask_knowledge_question). No llevan
@@ -36,7 +68,14 @@ function texto(valor: unknown): string { return typeof valor === 'string' ? valo
 function lista(valor: unknown): unknown[] { return Array.isArray(valor) ? valor : [] }
 function numero(valor: unknown): number | null { return typeof valor === 'number' && Number.isFinite(valor) ? valor : null }
 
-export function crearMotorForUsGuide(config: ForUsGuideConfig, fetchImpl: FetchImpl = fetch): Motor {
+export function crearMotorForUsGuide(config: ForUsGuideConfig, fetchImpl: FetchImpl = fetch, opciones: OpcionesForUsGuide = {}): Motor {
+  const ahora = opciones.ahora ?? Date.now
+  const esperar = opciones.esperar ?? ((ms: number, signal: AbortSignal) => dormir(ms, undefined, { signal }))
+  // Instante hasta el que ForUsGuide pidió no volver a llamarlo, y si ya hay un
+  // reintento de recuperación en curso: solo se admite uno a la vez.
+  let pausaHasta = 0
+  let reintentando = false
+
   function cabeceras(requestId: string): Record<string, string> {
     return {
       'content-type': 'application/json',
@@ -47,12 +86,51 @@ export function crearMotorForUsGuide(config: ForUsGuideConfig, fetchImpl: FetchI
     }
   }
 
-  async function llamar(ruta: string, cuerpo: unknown, requestId: string, signal: AbortSignal): Promise<Response> {
+  async function enviar(ruta: string, cuerpo: unknown, requestId: string, signal: AbortSignal): Promise<Response> {
     try {
       return await fetchImpl(`${config.url}${ruta}`, { method: 'POST', headers: cabeceras(requestId), body: JSON.stringify(cuerpo), signal })
     } catch {
       if (signal.aborted) throw new KdError('TIMEOUT', undefined, { origen: 'forusguide' })
       throw new KdError('UPSTREAM_UNREACHABLE', undefined, { origen: 'forusguide' })
+    }
+  }
+
+  // Amplía la pausa con la espera del 429 y libera su cuerpo sin leerlo: en
+  // undici, un cuerpo pendiente retiene la conexión. La liberación no se espera,
+  // y si falla no tapa el error de límite.
+  function pausar(respuesta: Response) {
+    const segundos = segundosRetryAfter(respuesta.headers.get('retry-after'), ahora()) ?? ESPERA_SIN_INDICACION_S
+    try {
+      void respuesta.body?.cancel().catch(() => {})
+    } catch { /* el error de límite es lo que se informa */ }
+    pausaHasta = Math.max(pausaHasta, ahora() + Math.max(1, segundos) * 1000)
+  }
+
+  const segundosEnPausa = () => Math.ceil((pausaHasta - ahora()) / 1000)
+
+  async function llamar(ruta: string, cuerpo: unknown, requestId: string, signal: AbortSignal): Promise<Response> {
+    if (segundosEnPausa() > 0) throw errorPorLimite(segundosEnPausa())
+    const primera = await enviar(ruta, cuerpo, requestId, signal)
+    if (primera.status !== 429) return primera
+    pausar(primera)
+    const pausaPropia = pausaHasta
+    // Si otra consulta ya está reintentando, o la espera es larga, se informa la espera.
+    if (reintentando || pausaPropia - ahora() > MAX_ESPERA_REINTENTO_S * 1000) throw errorPorLimite(segundosEnPausa())
+    reintentando = true
+    try {
+      try {
+        await esperar(pausaPropia - ahora(), signal)
+      } catch {
+        throw new KdError('TIMEOUT', undefined, { origen: 'forusguide' })
+      }
+      // Otra respuesta amplió entretanto la pausa: se respeta mientras siga vigente.
+      if (pausaHasta > pausaPropia && segundosEnPausa() > 0) throw errorPorLimite(segundosEnPausa())
+      const segunda = await enviar(ruta, cuerpo, requestId, signal)
+      if (segunda.status !== 429) return segunda
+      pausar(segunda)
+      throw errorPorLimite(segundosEnPausa())
+    } finally {
+      reintentando = false
     }
   }
 

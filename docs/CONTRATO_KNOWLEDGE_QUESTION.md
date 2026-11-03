@@ -45,7 +45,7 @@ en la cabecera `X-Request-ID`:
 | `TIMEOUT` | 504 | Se superó `KD_CONSULTA_TIMEOUT_MS` (30 a 120 s; por defecto 90 s). No se presenta ninguna respuesta parcial. |
 | `UPSTREAM_UNREACHABLE` | 503 | No se pudo conectar con ForUsGuide. |
 | `UPSTREAM_AUTH_ERROR` | 502 | ForUsGuide rechazó la credencial del servidor (401 o 403). No es reintentable. |
-| `UPSTREAM_ERROR` | 502 | Otro error de ForUsGuide o una respuesta con formato inesperado. |
+| `UPSTREAM_ERROR` | 502 | Otro error de ForUsGuide o una respuesta con formato inesperado. Si ForUsGuide limita las solicitudes (429), lleva `details.upstream_status: 429` y `details.retry_after_s`. |
 | `INTEGRATION_NOT_CONFIGURED` | 503 | El servidor arrancó sin `KD_MODO` o sin la integración necesaria. Nunca inventa una respuesta. |
 | `CONTENT_UNAVAILABLE` | 409 | La evidencia incluye una versión no servible (procesando, bloqueada, reemplazada o retirada). Se comprueba después del último `await`. |
 | `UNSUPPORTED_FORMAT` | 415 | El archivo no es `.json`. |
@@ -222,6 +222,19 @@ X-Correlation-ID: req-7f3a9c2e
   401 o 403 → `UPSTREAM_AUTH_ERROR`; 422 → `VALIDATION_ERROR`;
   503 → `VECTOR_DB_UNAVAILABLE`; los demás → `UPSTREAM_ERROR`. Su `message` no se
   reenvía.
+- Un 429 es una limitación temporal, no una caída. El servidor respeta el plazo
+  completo de `Retry-After`, por largo que sea:
+  - acepta segundos o una fecha HTTP (IMF-fixdate), con un mínimo de 1 s;
+  - si la cabecera falta, no es válida o no se puede representar, aplica 5 s;
+  - si la espera es de 10 s o menos, **una sola** consulta reintenta, una vez, al
+    terminar la espera y dentro del tiempo máximo de la consulta;
+  - las demás consultas que reciben 429 mientras tanto no reintentan;
+  - si la espera es más larga, el reintento vuelve a recibir 429 u otra respuesta
+    amplía la espera, responde `UPSTREAM_ERROR` con `details.retry_after_s`;
+  - mientras dura la espera, ninguna consulta ni fuente externa llama a ForUsGuide:
+    responden enseguida con el tiempo restante.
+
+  El cuerpo de cada 429 se descarta sin leerlo. Los demás errores no se reintentan.
 - Respuestas 200 que **no** son respuestas:
 
   | ForUsGuide | Knowledge Desk |
