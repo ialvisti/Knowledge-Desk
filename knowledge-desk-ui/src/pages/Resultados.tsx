@@ -12,7 +12,10 @@ import { plural } from '../lib/formato'
 import { RichText } from '../lib/richText'
 import { useServidor } from '../state/servidor'
 
-const TIMEOUT_POR_DEFECTO = 90_000
+// Plazo del servidor mientras /api/estado no ha llegado (por ejemplo, al abrir
+// /resultados directamente): el máximo que admite (KD_CONSULTA_TIMEOUT_MS), para
+// no cortar antes que él una consulta que todavía puede responder.
+const TIMEOUT_POR_DEFECTO = 120_000
 
 function anuncio(fase: string, contrato: ContratoConsulta | null, error: ApiError | null, invalida: string | null): string {
   if (invalida) return `La pregunta no es válida. ${invalida}`

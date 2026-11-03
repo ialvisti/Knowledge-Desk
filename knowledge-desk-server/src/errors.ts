@@ -10,6 +10,7 @@ export type ErrorCode =
   | 'UPSTREAM_UNREACHABLE'
   | 'UPSTREAM_AUTH_ERROR'
   | 'UPSTREAM_ERROR'
+  | 'UPSTREAM_BLOCKED'
   | 'INTEGRATION_NOT_CONFIGURED'
   | 'CONTENT_UNAVAILABLE'
   | 'INDEX_NOT_CONFIGURED'
@@ -41,6 +42,7 @@ const CATALOGO: Record<ErrorCode, Definicion> = {
   UPSTREAM_UNREACHABLE: { status: 503, retryable: true, message: 'El servicio de consulta no responde. Inténtalo de nuevo más tarde.' },
   UPSTREAM_AUTH_ERROR: { status: 502, retryable: false, message: 'El servicio de consulta rechazó la credencial del servidor. Avisa al administrador.' },
   UPSTREAM_ERROR: { status: 502, retryable: true, message: 'El servicio de consulta no pudo completar la solicitud. Inténtalo de nuevo en unos minutos.' },
+  UPSTREAM_BLOCKED: { status: 502, retryable: false, message: 'La plataforma que publica el servicio de consulta bloqueó la conexión de este servidor con una verificación de seguridad. Avisa al administrador con el ID de soporte.' },
   INTEGRATION_NOT_CONFIGURED: { status: 503, retryable: false, message: 'El servidor no tiene configurado un motor de consulta. Revisa la configuración de Knowledge Desk.' },
   CONTENT_UNAVAILABLE: { status: 409, retryable: true, message: 'La respuesta se apoyaba en un documento que está en proceso, bloqueado o retirado, así que no se presenta. Inténtalo de nuevo cuando termine la operación.' },
   INDEX_NOT_CONFIGURED: { status: 503, retryable: false, message: 'No es posible indexar documentos: la integración con el índice no está configurada.' },

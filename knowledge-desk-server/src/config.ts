@@ -11,7 +11,9 @@ import { fileURLToPath } from 'node:url'
 //    indexar. Nunca inventa respuestas ni estados.
 export type Modo = 'forusguide' | 'local' | 'sin_configurar'
 
-export interface ForUsGuideConfig { url: string; apiKey: string | null }
+// comprobarSalud: antes de cada consulta, un GET /health que espera el arranque
+// normal del servicio (FORUSGUIDE_COMPROBAR_SALUD; desactivado por defecto).
+export interface ForUsGuideConfig { url: string; apiKey: string | null; comprobarSalud?: boolean }
 export interface PineconeConfig { apiKey: string; indexHost: string; namespace: string }
 // chatReasoningEffort: solo para modelos de razonamiento que aceptan temperature 0
 // únicamente con reasoning_effort "none". Sin valor, el cuerpo del chat no cambia.
@@ -85,6 +87,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const modo: Modo = (modoRaw as Modo | null) ?? 'sin_configurar'
 
   const forusguideUrl = url(env, 'FORUSGUIDE_API_URL')
+  const comprobarSalud = texto(env, 'FORUSGUIDE_COMPROBAR_SALUD')
+  if (comprobarSalud !== null && comprobarSalud !== 'true' && comprobarSalud !== 'false') throw new ConfigError('FORUSGUIDE_COMPROBAR_SALUD debe ser true o false')
   const pineconeKey = texto(env, 'PINECONE_API_KEY')
   const pineconeHost = url(env, 'PINECONE_INDEX_HOST')
   const proveedorUrl = url(env, 'KD_LLM_BASE_URL')
@@ -152,7 +156,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     uiDistDir: existsSync(path.join(uiDist, 'index.html')) ? uiDist : null,
     modo,
     consultaTimeoutMs,
-    forusguide: modo === 'forusguide' && forusguideUrl ? { url: forusguideUrl, apiKey: texto(env, 'FORUSGUIDE_API_KEY') } : null,
+    forusguide: modo === 'forusguide' && forusguideUrl ? { url: forusguideUrl, apiKey: texto(env, 'FORUSGUIDE_API_KEY'), comprobarSalud: comprobarSalud === 'true' } : null,
     pinecone: modo === 'forusguide' && pineconeKey && pineconeHost
       ? { apiKey: pineconeKey, indexHost: pineconeHost, namespace: texto(env, 'PINECONE_NAMESPACE') ?? 'kb_articles' }
       : null,

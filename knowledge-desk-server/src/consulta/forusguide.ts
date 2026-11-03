@@ -122,13 +122,15 @@ const esErrorDeLaApp = (valor: unknown) => typeof valor === 'object' && valor !=
   && Object.keys(valor).every(clave => ['error', 'message', 'request_id', 'detail'].includes(clave))
   && ('error' in valor || 'detail' in valor)
 
-async function clasificarCuerpo(respuesta: Response, signal: AbortSignal) {
-  const { texto, bytes, completa, aTiempo } = await leerMuestra(respuesta, signal)
+function jsonDe({ texto, completa }: Awaited<ReturnType<typeof leerMuestra>>): unknown {
+  if (!completa) return undefined
+  try { return JSON.parse(texto) } catch { return undefined }
+}
+
+function clasificar(lectura: Awaited<ReturnType<typeof leerMuestra>>) {
+  const { texto, bytes, completa, aTiempo } = lectura
   const muestra = texto.toLowerCase()
-  let json: unknown
-  if (completa) {
-    try { json = JSON.parse(texto) } catch { /* no es JSON */ }
-  }
+  const json = jsonDe(lectura)
   const mencionaRender = /\brender\b/.test(muestra)
   let clase: 'cloudflare_1015' | 'json_app' | 'json_otro' | 'vacio' | 'no_leido' | 'render' | 'html' | 'texto'
   if (/error code:?\s*1015|error 1015|"error_code"\s*:\s*1015/.test(muestra)) clase = 'cloudflare_1015'
@@ -138,6 +140,16 @@ async function clasificarCuerpo(respuesta: Response, signal: AbortSignal) {
   else if (/^\s*<(?:!doctype|html)/.test(muestra)) clase = 'html'
   else clase = 'texto'
   return { clase, bytes, truncado: !completa, menciona_cloudflare: muestra.includes('cloudflare'), menciona_render: mencionaRender }
+}
+
+// Cloudflare marca su página de verificación con cf-mitigated: challenge, sea
+// cual sea el estado. Es una barrera de la plataforma: no se reintenta, no se
+// resuelve y no se cambia la ruta ni la identidad para eludirla.
+const esDesafio = (respuesta: Response) => respuesta.headers.get('cf-mitigated')?.trim().toLowerCase() === 'challenge'
+
+function conDiagnostico(error: KdError, diagnostico: Record<string, unknown>): KdError {
+  error.diagnostico = diagnostico
+  return error
 }
 
 // Textos fijos con los que ForUsGuide responde 200 cuando el modelo devolvió
@@ -209,21 +221,50 @@ export function crearMotorForUsGuide(config: ForUsGuideConfig, fetchImpl: FetchI
 
   // Un 429 pausa las llamadas en cuanto llegan sus cabeceras; después se
   // clasifica su cuerpo, lo que lo libera. Si la consulta venció mientras tanto,
-  // es TIMEOUT, y la pausa ya registrada sigue vigente.
+  // es TIMEOUT, y la pausa ya registrada sigue vigente. Un desafío de la
+  // plataforma (con cualquier estado) no pausa ni se reintenta: se informa.
   async function intentar(ruta: string, cuerpo: unknown, requestId: string, signal: AbortSignal, intentos: Record<string, unknown>[]) {
     const inicio = performance.now()
     const respuesta = await enviar(ruta, cuerpo, requestId, signal)
-    if (respuesta.status !== 429) return respuesta
-    pausar(respuesta)
-    const intento: Record<string, unknown> = { estado: 429, ms: Math.round(performance.now() - inicio), cabeceras: cabecerasDeOrigen(respuesta, config.apiKey) }
+    const desafio = esDesafio(respuesta)
+    if (respuesta.status !== 429 && !desafio) return respuesta
+    if (!desafio) pausar(respuesta)
+    const intento: Record<string, unknown> = { estado: respuesta.status, ms: Math.round(performance.now() - inicio), cabeceras: cabecerasDeOrigen(respuesta, config.apiKey) }
     intentos.push(intento)
-    intento.cuerpo = await clasificarCuerpo(respuesta, signal)
-    if (signal.aborted) {
-      const error = new KdError('TIMEOUT', undefined, { origen: 'forusguide' })
-      error.diagnostico = { intentos }
-      throw error
-    }
+    intento.cuerpo = clasificar(await leerMuestra(respuesta, signal))
+    if (signal.aborted) throw conDiagnostico(new KdError('TIMEOUT', undefined, { origen: 'forusguide' }), { intentos })
+    if (desafio) throw conDiagnostico(new KdError('UPSTREAM_BLOCKED', undefined, { upstream_status: respuesta.status }), { intentos })
     return respuesta
+  }
+
+  // Con comprobarSalud, antes de la consulta se pide UNA vez GET /health y se
+  // espera su respuesta normal: un servicio que arranca puede tardar cerca de un
+  // minuto. Solo un 200 JSON con status "healthy" u "ok" da paso a la consulta;
+  // un desafío, un error, un 429 o un HTML la detienen sin llamar al POST. No
+  // lleva la clave y todo ocurre dentro del plazo de la consulta.
+  async function comprobarSalud(requestId: string, signal: AbortSignal) {
+    if (segundosEnPausa() > 0) throw errorPorLimite(segundosEnPausa(), { pausa_local: true })
+    const inicio = performance.now()
+    let respuesta: Response
+    try {
+      respuesta = await fetchImpl(`${config.url}/health`, { method: 'GET', headers: { accept: 'application/json', 'x-correlation-id': requestId }, signal })
+    } catch {
+      if (signal.aborted) throw new KdError('TIMEOUT', undefined, { origen: 'forusguide', etapa: 'salud' })
+      throw new KdError('UPSTREAM_UNREACHABLE', undefined, { origen: 'forusguide', etapa: 'salud' })
+    }
+    const desafio = esDesafio(respuesta)
+    if (respuesta.status === 429 && !desafio) pausar(respuesta)
+    const salud: Record<string, unknown> = { estado: respuesta.status, ms: Math.round(performance.now() - inicio), cabeceras: cabecerasDeOrigen(respuesta, config.apiKey) }
+    const lectura = await leerMuestra(respuesta, signal)
+    salud.cuerpo = clasificar(lectura)
+    if (signal.aborted) throw conDiagnostico(new KdError('TIMEOUT', undefined, { origen: 'forusguide', etapa: 'salud' }), { salud })
+    if (desafio) throw conDiagnostico(new KdError('UPSTREAM_BLOCKED', undefined, { upstream_status: respuesta.status, etapa: 'salud' }), { salud })
+    if (respuesta.status === 429) throw errorPorLimite(segundosEnPausa(), { salud })
+    const datos = jsonDe(lectura) as { status?: unknown } | undefined
+    const mime = respuesta.headers.get('content-type')?.split(';')[0].trim().toLowerCase()
+    if (respuesta.status !== 200 || mime !== 'application/json' || (datos?.status !== 'healthy' && datos?.status !== 'ok')) {
+      throw conDiagnostico(new KdError('UPSTREAM_UNREACHABLE', 'El servicio de consulta no confirmó que esté disponible. Inténtalo de nuevo en unos minutos.', { origen: 'forusguide', etapa: 'salud', upstream_status: respuesta.status }), { salud })
+    }
   }
 
   async function llamar(ruta: string, cuerpo: unknown, requestId: string, signal: AbortSignal): Promise<Response> {
@@ -265,6 +306,7 @@ export function crearMotorForUsGuide(config: ForUsGuideConfig, fetchImpl: FetchI
     nombre: 'forusguide',
 
     async preguntar(pregunta: string, { requestId, signal }: ContextoConsulta): Promise<ResultadoMotor> {
+      if (config.comprobarSalud) await comprobarSalud(requestId, signal)
       // Solo se envía la pregunta: nunca ticket_id ni contexto de otras consultas.
       const respuesta = await llamar('/api/v1/knowledge-question', { question: pregunta }, requestId, signal)
       if (!respuesta.ok) throw errorPorEstado(respuesta.status)

@@ -46,6 +46,7 @@ en la cabecera `X-Request-ID`:
 | `UPSTREAM_UNREACHABLE` | 503 | No se pudo conectar con ForUsGuide. |
 | `UPSTREAM_AUTH_ERROR` | 502 | ForUsGuide rechazó la credencial del servidor (401 o 403). No es reintentable. |
 | `UPSTREAM_ERROR` | 502 | Otro error de ForUsGuide o una respuesta con formato inesperado. Si ForUsGuide limita las solicitudes (429), lleva `details.upstream_status: 429` y `details.retry_after_s`. |
+| `UPSTREAM_BLOCKED` | 502 | La plataforma que publica ForUsGuide respondió con una página de verificación (`cf-mitigated: challenge`, con cualquier estado). No es reintentable: hace falta que intervenga quien opera esa plataforma, con el ID de soporte. |
 | `INTEGRATION_NOT_CONFIGURED` | 503 | El servidor arrancó sin `KD_MODO` o sin la integración necesaria. Nunca inventa una respuesta. |
 | `CONTENT_UNAVAILABLE` | 409 | La evidencia incluye una versión no servible (procesando, bloqueada, reemplazada o retirada). Se comprueba después del último `await`. |
 | `UNSUPPORTED_FORMAT` | 415 | El archivo no es `.json`. |
@@ -234,7 +235,24 @@ X-Correlation-ID: req-7f3a9c2e
   - mientras dura la espera, ninguna consulta ni fuente externa llama a ForUsGuide:
     responden enseguida con el tiempo restante.
 
-  El cuerpo de cada 429 se descarta sin leerlo. Los demás errores no se reintentan.
+  Del cuerpo de cada 429 se leen como mucho 2048 bytes durante 300 ms, solo para
+  clasificarlo en el registro del servidor, y después se libera. Los demás errores
+  no se reintentan.
+- Una respuesta con `cf-mitigated: challenge` (verificación de Cloudflare) se
+  informa como `UPSTREAM_BLOCKED`, sin reintento ni pausa. El servidor no intenta
+  resolverla ni elude la barrera cambiando la ruta, la identidad o la IP. El CF-Ray
+  queda en el registro del servidor, nunca en la respuesta.
+- Con `FORUSGUIDE_COMPROBAR_SALUD=true` (desactivada por defecto), antes de cada
+  consulta se pide **una vez** `GET {FORUSGUIDE_API_URL}/health`, sin la clave:
+  - espera el arranque normal del servicio dentro del plazo de la consulta;
+  - solo un 200 `application/json` con `status` `healthy` u `ok` da paso al POST;
+  - un desafío da `UPSTREAM_BLOCKED`; un 429, la espera habitual;
+  - un error, un HTML o un JSON sin ese estado dan `UPSTREAM_UNREACHABLE` con
+    `details.etapa: "salud"`;
+  - si vence el plazo, `TIMEOUT`.
+
+  No hay sondeos programados ni en inactividad. Como un arranque puede tardar cerca
+  de un minuto y la consulta otros 40 s, conviene `KD_CONSULTA_TIMEOUT_MS=120000`.
 - Respuestas 200 que **no** son respuestas:
 
   | ForUsGuide | Knowledge Desk |

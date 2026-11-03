@@ -59,6 +59,41 @@ test.describe('HU01 · realizar una consulta', () => {
     await expect(page.getByText('ID de soporte: req-9d2f41aa')).toBeVisible()
   })
 
+  // Reloj simulado: los plazos de más de un minuto se recorren sin esperar.
+  test('al abrir /resultados antes de que llegue /api/estado, el navegador no corta antes del máximo del servidor', async ({ page }) => {
+    await simularServidor(page)
+    let liberarEstado = () => {}
+    const estadoRetenido = new Promise<void>(resolve => { liberarEstado = resolve })
+    await page.route(url => url.pathname === '/api/estado', async route => { await estadoRetenido; await route.fallback() })
+    let consultas = 0
+    await page.route(url => url.pathname === '/api/consulta', () => { consultas++ }) // nunca responde
+    await page.clock.install()
+    await page.goto(resultados(PREGUNTA_ROLLOVER))
+    await expect.poll(() => consultas).toBe(1)
+    // Un arranque de ForUsGuide (~62 s) más la respuesta (~46 s) caben en los 120 s del servidor.
+    await page.clock.runFor(101_000)
+    await expect(page.getByText('Consultando la base de conocimiento…')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'La consulta tardó demasiado' })).toHaveCount(0)
+    await page.clock.runFor(30_000)
+    await expect(page.getByRole('heading', { name: 'La consulta tardó demasiado' })).toBeVisible()
+    expect(consultas).toBe(1)
+    liberarEstado()
+  })
+
+  test('con /api/estado cargado manda su plazo, más el margen del navegador', async ({ page }) => {
+    await simularServidor(page, { estado: { consultaTimeoutMs: 30_000 } })
+    await page.route(url => url.pathname === '/api/consulta', () => {}) // nunca responde
+    await page.clock.install()
+    const estadoCargado = page.waitForResponse(respuesta => new URL(respuesta.url()).pathname === '/api/estado')
+    await page.goto('/')
+    await estadoCargado
+    await page.getByLabel('Escribe tu consulta').fill(PREGUNTA_ROLLOVER)
+    await page.getByLabel('Escribe tu consulta').press('Enter')
+    await expect(page.getByText('Consultando la base de conocimiento…')).toBeVisible()
+    await page.clock.runFor(41_000)
+    await expect(page.getByRole('heading', { name: 'La consulta tardó demasiado' })).toBeVisible()
+  })
+
   test('el ejemplo ejecuta el mismo flujo que escribir y pulsar Buscar', async ({ page }) => {
     const registro = await simularServidor(page)
     await page.goto('/')
