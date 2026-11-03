@@ -6,7 +6,7 @@ import { describe, it } from 'node:test'
 import { construirApp, construirServicios } from '../src/app.ts'
 import { loadConfig } from '../src/config.ts'
 import { crearMotorForUsGuide } from '../src/consulta/forusguide.ts'
-import { KdError } from '../src/errors.ts'
+import { KdError, cuerpoError } from '../src/errors.ts'
 
 // Caso reportado el 2026-11-03: «¿Cómo hago un retiro de mi 401(k)?» recibió de
 // ForUsGuide un 429 (req-b55f0da9), y la misma pregunta se respondió con
@@ -25,6 +25,12 @@ const respondida = () => json(200, {
   used_chunks: [{ chunk_id: 'retiros_401k_chunk_1', score: 0.5, chunk_type: 'steps', article_id: 'retiros_401k', article_title: 'Retiros (sintético)', content: 'Paso sintético.' }],
   confidence_note: 'well_covered', metadata: { chunks_used: 1, unique_articles: 1, model: 'modelo-sintetico', coverage_gaps: [] },
 })
+// 429 generado delante de la app (sin x-request-id ni x-render-origin-server),
+// sin Retry-After, como los observados desde Render el 2026-11-03.
+const CABECERAS_PLATAFORMA = { server: 'cloudflare', 'cf-ray': '0000000000000000-PDX', 'content-type': 'text/plain; charset=UTF-8' }
+const dePlataforma = (extra: Record<string, string> = {}) => new Response('error code: 1015', { status: 429, headers: { ...CABECERAS_PLATAFORMA, ...extra } })
+// Lo que queda en el registro: el MIME sin parámetros y solo la clase del cuerpo.
+const REGISTRO_PLATAFORMA = { cabeceras: { ...CABECERAS_PLATAFORMA, 'content-type': 'text/plain' }, cuerpo: { clase: 'cloudflare_1015', bytes: 16, truncado: false, menciona_cloudflare: false, menciona_render: false } }
 
 // Motor con reloj y esperas simulados: cuenta las llamadas a ForUsGuide y anota cada espera.
 function motorCon(respuestas: (() => Response)[]) {
@@ -124,6 +130,84 @@ describe('ForUsGuide 429: limitación temporal con Retry-After, sin tormenta de 
     const motor = crearMotorForUsGuide(CONFIG, (async () => { llamadas++; return limitada('5') }) as typeof fetch)
     await assert.rejects(motor.preguntar(PREGUNTA, contexto(AbortSignal.timeout(50))), (error: unknown) => error instanceof KdError && error.code === 'TIMEOUT')
     assert.equal(llamadas, 1)
+  })
+
+  it('adjunta para el registro quién generó cada 429 (estado, ms y cabeceras de origen), fuera del contrato', async () => {
+    const { motor } = motorCon([() => dePlataforma(), () => dePlataforma()])
+    const error = await motor.preguntar(PREGUNTA, contexto()).then(() => null, (fallo: unknown) => fallo)
+    assert.ok(error instanceof KdError && esLimite(5)(error))
+    const { intentos } = error.diagnostico as { intentos: { estado: number; ms: number; cabeceras: unknown; cuerpo: unknown }[] }
+    assert.deepEqual(intentos.map(({ estado, cabeceras, cuerpo }) => ({ estado, cabeceras, cuerpo })), [{ estado: 429, ...REGISTRO_PLATAFORMA }, { estado: 429, ...REGISTRO_PLATAFORMA }])
+    assert.ok(intentos.every(intento => Number.isInteger(intento.ms) && intento.ms >= 0))
+    assert.doesNotMatch(JSON.stringify(cuerpoError(error, 'req-0000beef')), /cloudflare|cf-ray|intentos|1015/)
+
+    // Durante la pausa no sale ninguna llamada, y el registro lo distingue.
+    const enPausa = await motor.preguntar(PREGUNTA, contexto()).then(() => null, (fallo: unknown) => fallo)
+    assert.ok(enPausa instanceof KdError)
+    assert.deepEqual(enPausa.diagnostico, { pausa_local: true })
+  })
+
+  it('omite del registro los valores de cabecera mal formados o que contienen la clave del servidor', async () => {
+    const { motor } = motorCon([() => new Response(null, {
+      status: 429,
+      headers: {
+        server: CONFIG.apiKey, // formato válido, pero es la clave
+        'x-render-origin-server': 'sintetica-forusguide', // un fragmento de la clave
+        'rndr-id': 'no es un id <script>',
+        'cf-ray': `${CONFIG.apiKey}-PDX`,
+        'cf-mitigated': 'challenge',
+        'x-request-id': `clave=${CONFIG.apiKey}`,
+        'content-type': 'Text/HTML; charset=utf-8',
+        'content-length': '12abc',
+        'retry-after': '30',
+      },
+    })])
+    const error = await motor.preguntar(PREGUNTA, contexto()).then(() => null, (fallo: unknown) => fallo)
+    assert.ok(error instanceof KdError)
+    const { intentos } = error.diagnostico as { intentos: { cabeceras: unknown }[] }
+    assert.deepEqual(intentos[0].cabeceras, { 'cf-mitigated': 'challenge', 'content-type': 'text/html', 'retry-after': '30' })
+    assert.doesNotMatch(JSON.stringify(error.diagnostico), /clave|sintetica|script/)
+  })
+
+  it('clasifica el cuerpo del 429 sin registrar su texto, con lectura acotada', async () => {
+    const PRIVADO = `${PREGUNTA} ${CONFIG.apiKey}`
+    const JSON_MIME = { 'content-type': 'application/json' }
+    const HTML_MIME = { 'content-type': 'text/html' }
+    const casos: [string | null, Record<string, string>, string][] = [
+      [JSON.stringify({ error: 'http_error', message: PRIVADO, request_id: 'sintetico' }), JSON_MIME, 'json_app'],
+      [JSON.stringify({ detail: PRIVADO }), JSON_MIME, 'json_app'],
+      [JSON.stringify({ title: 'Error 1015: You are being rate limited', error_code: 1015, detail: PRIVADO }), JSON_MIME, 'cloudflare_1015'],
+      [JSON.stringify({ otro: PRIVADO }), JSON_MIME, 'json_otro'],
+      [`<!DOCTYPE html><html><title>Service waking up</title><body>Render ${PRIVADO}</body></html>`, HTML_MIME, 'render'],
+      [`<html><body>Too Many Requests ${PRIVADO}</body></html>`, HTML_MIME, 'html'],
+      [null, {}, 'vacio'],
+    ]
+    for (const [cuerpo, cabeceras, clase] of casos) {
+      const { motor } = motorCon([() => new Response(cuerpo, { status: 429, headers: { 'retry-after': '30', ...cabeceras } })])
+      const error = await motor.preguntar(PREGUNTA, contexto()).then(() => null, (fallo: unknown) => fallo)
+      assert.ok(error instanceof KdError)
+      const { intentos } = error.diagnostico as { intentos: { cuerpo: { clase: string } }[] }
+      assert.equal(intentos[0].cuerpo.clase, clase, clase)
+      assert.doesNotMatch(JSON.stringify(error.diagnostico), /retiro|clave|rate limited|waking|Too Many/, clase)
+    }
+
+    // Un único fragmento enorme se recorta a 2048 bytes; uno de 2048 justos no se marca truncado.
+    const deUnFragmento = (bytes: number) => new Response(new ReadableStream({
+      start(controlador) { controlador.enqueue(new Uint8Array(bytes).fill(120)); controlador.close() },
+    }), { status: 429, headers: { 'retry-after': '30' } })
+    for (const [enviados, truncado] of [[50_000, true], [2048, false]] as const) {
+      const { motor } = motorCon([() => deUnFragmento(enviados)])
+      const error = await motor.preguntar(PREGUNTA, contexto()).then(() => null, (fallo: unknown) => fallo) as KdError
+      const { cuerpo } = (error.diagnostico as { intentos: { cuerpo: { bytes: number; truncado: boolean } }[] }).intentos[0]
+      assert.deepEqual({ bytes: cuerpo.bytes, truncado: cuerpo.truncado }, { bytes: 2048, truncado }, String(enviados))
+    }
+    // Un cuerpo que nunca termina no retiene el error.
+    const inicio = performance.now()
+    const colgado = motorCon([() => new Response(new ReadableStream(), { status: 429, headers: { 'retry-after': '30' } })])
+    const sinFin = await colgado.motor.preguntar(PREGUNTA, contexto()).then(() => null, (fallo: unknown) => fallo) as KdError
+    assert.ok(esLimite(30)(sinFin))
+    assert.equal((sinFin.diagnostico as { intentos: { cuerpo: { clase: string } }[] }).intentos[0].cuerpo.clase, 'no_leido')
+    assert.ok(performance.now() - inicio < 2000, 'la lectura está acotada en el tiempo')
   })
 
   it('los demás errores de ForUsGuide no se reintentan', async () => {
@@ -247,6 +331,49 @@ describe('ForUsGuide 429 con consultas concurrentes: un solo reintento de recupe
     assert.equal(primera.error, undefined)
   })
 
+  it('la pausa del 429 rige desde sus cabeceras: mientras se lee su cuerpo, otra consulta no llama a ForUsGuide', async () => {
+    const { motor, estado } = motorControlado()
+    let cuerpo!: ReadableStreamDefaultController<Uint8Array>
+    const primera = seguir(motor.preguntar(PREGUNTA, contexto()))
+    await drenar()
+    estado.envios[0].resolver(new Response(new ReadableStream<Uint8Array>({ start(controlador) { cuerpo = controlador } }), { status: 429, headers: { 'retry-after': '30' } }))
+    await drenar()
+    assert.equal(primera.listo, false, 'el cuerpo sigue pendiente')
+    const segunda = seguir(motor.preguntar(PREGUNTA, contexto()))
+    await drenar()
+    assert.ok(esLimite(30)(segunda.error))
+    assert.deepEqual((segunda.error as KdError).diagnostico, { pausa_local: true })
+    assert.equal(estado.envios.length, 1, 'sin llamada extra durante la lectura')
+    cuerpo.close()
+    await primera.promesa
+    assert.ok(esLimite(30)(primera.error))
+  })
+
+  it('si la consulta vence mientras se lee el cuerpo del primer o del segundo 429, es TIMEOUT y la pausa queda registrada', async () => {
+    const { motor, estado } = motorControlado()
+    const vence = new AbortController()
+    const primera = seguir(motor.preguntar(PREGUNTA, contexto(vence.signal)))
+    await drenar()
+    estado.envios[0].resolver(new Response(new ReadableStream(), { status: 429, headers: { 'retry-after': '30' } }))
+    await drenar()
+    vence.abort()
+    await primera.promesa
+    assert.ok(primera.error instanceof KdError && primera.error.code === 'TIMEOUT')
+    assert.ok(esLimite(30)(await motor.preguntar(PREGUNTA, contexto()).then(() => null, (fallo: unknown) => fallo)))
+    assert.equal(estado.envios.length, 1)
+
+    const venceEnReintento = new AbortController()
+    const reintento = motorCon([() => limitada('2'), () => {
+      venceEnReintento.abort()
+      return new Response(new ReadableStream(), { status: 429, headers: { 'retry-after': '30' } })
+    }])
+    const error = await reintento.motor.preguntar(PREGUNTA, contexto(venceEnReintento.signal)).then(() => null, (fallo: unknown) => fallo)
+    assert.ok(error instanceof KdError && error.code === 'TIMEOUT')
+    assert.deepEqual(reintento.estado.esperas, [2000])
+    assert.ok(esLimite(30)(await reintento.motor.preguntar(PREGUNTA, contexto()).then(() => null, (fallo: unknown) => fallo)))
+    assert.equal(reintento.estado.llamadas, 2)
+  })
+
   it('la reserva se libera si la espera termina en TIMEOUT o el reintento falla', async () => {
     const { motor, estado } = motorControlado()
     const agotada = seguir(motor.preguntar(PREGUNTA, contexto()))
@@ -310,6 +437,33 @@ describe('Contrato de /api/consulta ante un 429 persistente de ForUsGuide', () =
       assert.equal(reintento.code, 'UPSTREAM_ERROR')
       assert.ok(reintento.details.retry_after_s >= 1 && reintento.details.retry_after_s <= 30)
       assert.equal(llamadas, 1)
+    } finally {
+      await app.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('el registro del servidor anota el origen del 429 con el ID de soporte, sin clave, pregunta ni cuerpo', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'kd-forusguide-registro-'))
+    const config = loadConfig({
+      KD_MODO: 'forusguide', FORUSGUIDE_API_URL: CONFIG.url, FORUSGUIDE_API_KEY: CONFIG.apiKey,
+      KD_DATA_DIR: path.join(dir, 'datos'), KD_UI_DIST: path.join(dir, 'sin-ui'),
+    })
+    const fetchForUsGuide = (async () => dePlataforma({ 'retry-after': '30' })) as typeof fetch
+    const lineas: string[] = []
+    const app = await construirApp(await construirServicios(config, { fetchForUsGuide }), { destinoLog: { write: linea => { lineas.push(linea) } } })
+    try {
+      const respuesta = await app.inject({ method: 'POST', url: '/api/consulta', headers: { 'x-request-id': 'req-759377e8' }, payload: { question: PREGUNTA } })
+      assert.equal(respuesta.json().code, 'UPSTREAM_ERROR')
+      assert.doesNotMatch(respuesta.body, /cloudflare|cf-ray|1015/)
+      const aviso = lineas.map(linea => JSON.parse(linea)).find(linea => linea.msg === 'respuesta externa no satisfactoria')
+      assert.ok(aviso, 'el 429 queda registrado')
+      assert.equal(aviso.reqId, 'req-759377e8')
+      assert.equal(aviso.level, 40)
+      assert.deepEqual(aviso.externo.intentos.map(({ estado, cabeceras, cuerpo }: Record<string, unknown>) => ({ estado, cabeceras, cuerpo })), [
+        { estado: 429, cabeceras: { ...REGISTRO_PLATAFORMA.cabeceras, 'retry-after': '30' }, cuerpo: REGISTRO_PLATAFORMA.cuerpo },
+      ])
+      assert.doesNotMatch(lineas.join(''), /clave-sintetica|retiro de mi 401|error code/)
     } finally {
       await app.close()
       await rm(dir, { recursive: true, force: true })

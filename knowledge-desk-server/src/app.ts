@@ -136,7 +136,8 @@ function iguales(a: string, b: string): boolean {
   return timingSafeEqual(resumenA, resumenB)
 }
 
-export async function construirApp(servicios: Servicios, opciones: { logger?: boolean } = {}): Promise<FastifyInstance> {
+// destinoLog: solo para pruebas que leen el registro; por defecto, la salida estándar.
+export async function construirApp(servicios: Servicios, opciones: { logger?: boolean; destinoLog?: { write(linea: string): void } } = {}): Promise<FastifyInstance> {
   const { config, registro, gestor } = servicios
   const app = Fastify({
     bodyLimit: 64 * 1024,
@@ -146,6 +147,7 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
     logger: opciones.logger === false ? false : {
       level: 'info',
       serializers: { req: req => ({ method: req.method, url: req.url.split('?')[0], id: req.id }) },
+      ...(opciones.destinoLog ? { stream: opciones.destinoLog } : {}),
     },
   })
 
@@ -218,8 +220,11 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
 
   app.setErrorHandler((error: Error & { code?: string; statusCode?: number }, request, reply) => {
     let kd: KdError
-    if (error instanceof KdError) kd = error
-    else if (error.code === 'FST_REQ_FILE_TOO_LARGE') kd = new KdError('FILE_TOO_LARGE')
+    if (error instanceof KdError) {
+      kd = error
+      // Quién generó la respuesta externa (cabeceras de origen), solo en el registro.
+      if (kd.diagnostico) request.log.warn({ code: kd.code, externo: kd.diagnostico }, 'respuesta externa no satisfactoria')
+    } else if (error.code === 'FST_REQ_FILE_TOO_LARGE') kd = new KdError('FILE_TOO_LARGE')
     else if (error.code === 'FST_INVALID_MULTIPART_CONTENT_TYPE' || error.code === 'FST_FILES_LIMIT' || error.code === 'FST_PARTS_LIMIT') kd = new KdError('FILE_REQUIRED', 'Envía un único archivo en el campo "archivo".')
     else if (request.url.startsWith('/api/consulta') && (error.statusCode === 400 || error.statusCode === 413 || error.statusCode === 415)) {
       kd = new KdError('VALIDATION_ERROR', 'La pregunta no es válida: el cuerpo de la solicitud no tiene el formato esperado.', { motivo: 'formato' })

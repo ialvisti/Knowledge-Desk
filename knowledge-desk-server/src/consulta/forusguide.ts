@@ -19,6 +19,8 @@ export interface OpcionesForUsGuide {
 const ESPERA_SIN_INDICACION_S = 5
 const MAX_ESPERA_REINTENTO_S = 10
 
+const FECHA_HTTP = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/
+
 // Retry-After admite segundos o una fecha HTTP (IMF-fixdate). Un valor que no
 // cumple el formato o que no se representa con exactitud en milisegundos se
 // trata como ausente.
@@ -26,14 +28,116 @@ function segundosRetryAfter(valor: string | null, ahora: number): number | null 
   const texto = valor?.trim() ?? ''
   let segundos: number
   if (/^\d+$/.test(texto)) segundos = Number(texto)
-  else if (/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(texto)) segundos = Math.ceil((Date.parse(texto) - ahora) / 1000)
+  else if (FECHA_HTTP.test(texto)) segundos = Math.ceil((Date.parse(texto) - ahora) / 1000)
   else return null
   return Number.isSafeInteger(segundos * 1000) ? segundos : null
 }
 
-function errorPorLimite(segundos: number): KdError {
+function errorPorLimite(segundos: number, diagnostico: Record<string, unknown>): KdError {
   const espera = segundos === 1 ? '1 segundo' : `${segundos} segundos`
-  return new KdError('UPSTREAM_ERROR', `El servicio de consulta está limitando las solicitudes. Inténtalo de nuevo en ${espera}.`, { upstream_status: 429, retry_after_s: segundos })
+  const error = new KdError('UPSTREAM_ERROR', `El servicio de consulta está limitando las solicitudes. Inténtalo de nuevo en ${espera}.`, { upstream_status: 429, retry_after_s: segundos })
+  error.diagnostico = diagnostico
+  return error
+}
+
+// Diagnóstico de un 429 para el registro del servidor (nunca para el contrato).
+// Las cabeceras muestran por dónde pasó la respuesta: la app de ForUsGuide pone
+// su x-request-id (uuid) y x-render-origin-server: uvicorn; Render, rndr-id;
+// Cloudflare, cf-ray. Un valor que no cumple su formato, o que contiene la clave
+// del servidor, se omite.
+const FORMATOS_DE_ORIGEN: Record<string, RegExp> = {
+  server: /^[A-Za-z0-9._ /-]{1,40}$/,
+  'x-render-origin-server': /^[A-Za-z0-9._ /-]{1,40}$/,
+  'rndr-id': /^[0-9a-f-]{8,64}$/i,
+  'cf-ray': /^[0-9a-f]{8,32}(?:-[A-Z]{3})?$/,
+  'cf-mitigated': /^[a-z_]{1,20}$/,
+  'x-request-id': /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  'content-type': /^[a-z]+\/[a-z0-9.+-]{1,60}$/,
+  'content-length': /^\d{1,9}$/,
+  'retry-after': /^\d{1,10}$/,
+}
+
+function cabecerasDeOrigen(respuesta: Response, clave: string | null): Record<string, string> {
+  const reflejaClave = (valor: string) => clave !== null && (valor.includes(clave) || (valor.length >= 8 && clave.includes(valor)))
+  return Object.fromEntries(Object.entries(FORMATOS_DE_ORIGEN).flatMap(([nombre, formato]) => {
+    let valor = respuesta.headers.get(nombre)?.trim() ?? ''
+    if (nombre === 'content-type') valor = valor.split(';')[0].trim().toLowerCase()
+    const valido = formato.test(valor) || (nombre === 'retry-after' && FECHA_HTTP.test(valor))
+    return valido && !reflejaClave(valor) ? [[nombre, valor]] : []
+  }))
+}
+
+// El cuerpo se lee como mucho MAX_MUESTRA_BYTES durante MAX_LECTURA_MS (o hasta
+// que venza la consulta), y siempre se libera. Solo se registra a qué clase
+// pertenece; nunca su texto.
+const MAX_MUESTRA_BYTES = 2048
+const MAX_LECTURA_MS = 300
+
+async function leerMuestra(respuesta: Response, signal: AbortSignal) {
+  const lector = respuesta.body?.getReader()
+  if (!lector) return { texto: '', bytes: 0, completa: true, aTiempo: true }
+  const partes: Uint8Array[] = []
+  let bytes = 0
+  let completa = false
+  let aTiempo = true
+  let temporizador: ReturnType<typeof setTimeout> | undefined
+  let cortar = () => {}
+  const corte = new Promise<'corte'>(resolve => {
+    cortar = () => resolve('corte')
+    temporizador = setTimeout(cortar, MAX_LECTURA_MS)
+    if (signal.aborted) cortar()
+    else signal.addEventListener('abort', cortar, { once: true })
+  })
+  try {
+    while (true) {
+      const lectura = await Promise.race([lector.read(), corte])
+      if (lectura === 'corte') { aTiempo = false; break }
+      if (lectura.done) { completa = true; break }
+      // Un fragmento que no cabe se recorta (copia) al espacio restante.
+      const resto = MAX_MUESTRA_BYTES - bytes
+      if (lectura.value.byteLength > resto) {
+        partes.push(lectura.value.slice(0, resto))
+        bytes += resto
+        break
+      }
+      partes.push(lectura.value)
+      bytes += lectura.value.byteLength
+    }
+  } catch { /* cuerpo interrumpido: se clasifica lo leído */ } finally {
+    clearTimeout(temporizador)
+    signal.removeEventListener('abort', cortar)
+    // En undici, un cuerpo pendiente retiene la conexión. La liberación no se
+    // espera, y si falla no tapa el error de límite.
+    try {
+      void lector.cancel().catch(() => {})
+    } catch { /* el error de límite es lo que se informa */ }
+  }
+  const unido = new Uint8Array(bytes)
+  let desplazamiento = 0
+  for (const parte of partes) { unido.set(parte, desplazamiento); desplazamiento += parte.byteLength }
+  return { texto: new TextDecoder().decode(unido), bytes, completa, aTiempo }
+}
+
+const esErrorDeLaApp = (valor: unknown) => typeof valor === 'object' && valor !== null && !Array.isArray(valor)
+  && Object.keys(valor).every(clave => ['error', 'message', 'request_id', 'detail'].includes(clave))
+  && ('error' in valor || 'detail' in valor)
+
+async function clasificarCuerpo(respuesta: Response, signal: AbortSignal) {
+  const { texto, bytes, completa, aTiempo } = await leerMuestra(respuesta, signal)
+  const muestra = texto.toLowerCase()
+  let json: unknown
+  if (completa) {
+    try { json = JSON.parse(texto) } catch { /* no es JSON */ }
+  }
+  const mencionaRender = /\brender\b/.test(muestra)
+  let clase: 'cloudflare_1015' | 'json_app' | 'json_otro' | 'vacio' | 'no_leido' | 'render' | 'html' | 'texto'
+  if (/error code:?\s*1015|error 1015|"error_code"\s*:\s*1015/.test(muestra)) clase = 'cloudflare_1015'
+  else if (json !== undefined) clase = esErrorDeLaApp(json) ? 'json_app' : 'json_otro'
+  else if (!bytes) clase = aTiempo ? 'vacio' : 'no_leido'
+  else if (mencionaRender) clase = 'render'
+  else if (/^\s*<(?:!doctype|html)/.test(muestra)) clase = 'html'
+  else clase = 'texto'
+  return { clase, bytes, truncado: !completa, menciona_cloudflare: muestra.includes('cloudflare'), menciona_render: mencionaRender }
 }
 
 // Textos fijos con los que ForUsGuide responde 200 cuando el modelo devolvió
@@ -95,27 +199,41 @@ export function crearMotorForUsGuide(config: ForUsGuideConfig, fetchImpl: FetchI
     }
   }
 
-  // Amplía la pausa con la espera del 429 y libera su cuerpo sin leerlo: en
-  // undici, un cuerpo pendiente retiene la conexión. La liberación no se espera,
-  // y si falla no tapa el error de límite.
+  // Amplía la pausa con la espera del 429.
   function pausar(respuesta: Response) {
     const segundos = segundosRetryAfter(respuesta.headers.get('retry-after'), ahora()) ?? ESPERA_SIN_INDICACION_S
-    try {
-      void respuesta.body?.cancel().catch(() => {})
-    } catch { /* el error de límite es lo que se informa */ }
     pausaHasta = Math.max(pausaHasta, ahora() + Math.max(1, segundos) * 1000)
   }
 
   const segundosEnPausa = () => Math.ceil((pausaHasta - ahora()) / 1000)
 
+  // Un 429 pausa las llamadas en cuanto llegan sus cabeceras; después se
+  // clasifica su cuerpo, lo que lo libera. Si la consulta venció mientras tanto,
+  // es TIMEOUT, y la pausa ya registrada sigue vigente.
+  async function intentar(ruta: string, cuerpo: unknown, requestId: string, signal: AbortSignal, intentos: Record<string, unknown>[]) {
+    const inicio = performance.now()
+    const respuesta = await enviar(ruta, cuerpo, requestId, signal)
+    if (respuesta.status !== 429) return respuesta
+    pausar(respuesta)
+    const intento: Record<string, unknown> = { estado: 429, ms: Math.round(performance.now() - inicio), cabeceras: cabecerasDeOrigen(respuesta, config.apiKey) }
+    intentos.push(intento)
+    intento.cuerpo = await clasificarCuerpo(respuesta, signal)
+    if (signal.aborted) {
+      const error = new KdError('TIMEOUT', undefined, { origen: 'forusguide' })
+      error.diagnostico = { intentos }
+      throw error
+    }
+    return respuesta
+  }
+
   async function llamar(ruta: string, cuerpo: unknown, requestId: string, signal: AbortSignal): Promise<Response> {
-    if (segundosEnPausa() > 0) throw errorPorLimite(segundosEnPausa())
-    const primera = await enviar(ruta, cuerpo, requestId, signal)
+    if (segundosEnPausa() > 0) throw errorPorLimite(segundosEnPausa(), { pausa_local: true })
+    const intentos: Record<string, unknown>[] = []
+    const primera = await intentar(ruta, cuerpo, requestId, signal, intentos)
     if (primera.status !== 429) return primera
-    pausar(primera)
     const pausaPropia = pausaHasta
     // Si otra consulta ya está reintentando, o la espera es larga, se informa la espera.
-    if (reintentando || pausaPropia - ahora() > MAX_ESPERA_REINTENTO_S * 1000) throw errorPorLimite(segundosEnPausa())
+    if (reintentando || pausaPropia - ahora() > MAX_ESPERA_REINTENTO_S * 1000) throw errorPorLimite(segundosEnPausa(), { intentos })
     reintentando = true
     try {
       try {
@@ -124,11 +242,10 @@ export function crearMotorForUsGuide(config: ForUsGuideConfig, fetchImpl: FetchI
         throw new KdError('TIMEOUT', undefined, { origen: 'forusguide' })
       }
       // Otra respuesta amplió entretanto la pausa: se respeta mientras siga vigente.
-      if (pausaHasta > pausaPropia && segundosEnPausa() > 0) throw errorPorLimite(segundosEnPausa())
-      const segunda = await enviar(ruta, cuerpo, requestId, signal)
+      if (pausaHasta > pausaPropia && segundosEnPausa() > 0) throw errorPorLimite(segundosEnPausa(), { intentos })
+      const segunda = await intentar(ruta, cuerpo, requestId, signal, intentos)
       if (segunda.status !== 429) return segunda
-      pausar(segunda)
-      throw errorPorLimite(segundosEnPausa())
+      throw errorPorLimite(segundosEnPausa(), { intentos })
     } finally {
       reintentando = false
     }

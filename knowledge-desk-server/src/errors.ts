@@ -67,6 +67,8 @@ export class KdError extends Error {
   readonly status: number
   readonly retryable: boolean
   readonly details: Record<string, unknown>
+  // Metadatos para el registro del servidor; nunca forman parte del contrato.
+  diagnostico: Record<string, unknown> | null = null
 
   constructor(code: ErrorCode, message?: string, details: Record<string, unknown> = {}) {
     const definicion = CATALOGO[code]
