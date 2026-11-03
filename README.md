@@ -196,8 +196,13 @@ Por decisión del usuario:
 
 1. **Sin inicio de sesión** (`KD_ACCESO_PUBLICO=true`): se entra directamente.
 2. **Motor de consulta: el servicio real de ForUsGuide** (`KD_MODO=forusguide`,
-   `POST https://forusguide.onrender.com/api/v1/knowledge-question`). Las respuestas y
-   las fuentes salen del corpus de ForUsGuide, no del artículo sintético local.
+   `POST https://kb-rag-system-900340137010.us-central1.run.app/api/v1/knowledge-question`).
+   Las respuestas y las fuentes salen del corpus de ForUsGuide, no del artículo
+   sintético local.
+   - Es la producción actual de ForUsGuide, en Cloud Run. Solo pide `X-API-Key`: su
+     OpenAPI, verificada el 2026-11-03, indica que no requiere identidad de Google.
+   - Hasta esa fecha se usaba `https://forusguide.onrender.com`, una versión antigua.
+     Los registros de despliegue anteriores la mencionan como historia.
 
 Despliegues y prueba en vivo:
 
@@ -216,8 +221,11 @@ Despliegues y prueba en vivo:
 
 - Compila la interfaz y arranca `node knowledge-desk-server/src/main.ts`, con salud en
   `/api/salud` y `autoDeploy: false`.
-- Fija `KD_MODO=forusguide` y `FORUSGUIDE_API_URL=https://forusguide.onrender.com`.
+- Fija `KD_MODO=forusguide` y
+  `FORUSGUIDE_API_URL=https://kb-rag-system-900340137010.us-central1.run.app`.
   La `X-API-Key` (`FORUSGUIDE_API_KEY`, `sync: false`) solo va en el panel de Render.
+- Fija `KD_CONSULTA_TIMEOUT_MS=120000` y deja `FORUSGUIDE_COMPROBAR_SALUD=false`. La
+  comprobación previa de salud es opcional y está apagada por defecto.
 - **Solo consulta.** No declara `PINECONE_API_KEY` ni `PINECONE_INDEX_HOST`, así que
   Knowledge Desk no tiene indexación y nunca escribe, siembra ni borra en el índice
   compartido de ForUsGuide. Con el acceso público, el servidor se niega a arrancar si

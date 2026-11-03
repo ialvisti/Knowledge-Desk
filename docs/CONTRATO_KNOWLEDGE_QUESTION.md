@@ -215,6 +215,13 @@ X-Correlation-ID: req-7f3a9c2e
 { "question": "…" }
 ```
 
+- **Producción actual** (verificada el 2026-11-03):
+  `FORUSGUIDE_API_URL=https://kb-rag-system-900340137010.us-central1.run.app`
+  (Cloud Run).
+  - Su `/openapi.json` declara `knowledge-question` con `ApiKeyAuth` (cabecera
+    `X-API-Key`) y aclara que no se requiere identidad de Google. Las guías antiguas
+    de ForUsGuide que piden un identity token están desactualizadas.
+  - `https://forusguide.onrender.com` es una versión antigua y no debe usarse.
 - Nunca se envía `ticket_id`, que pertenece al flujo de tickets de ForUsGuide.
 - La copia de trabajo de ForUsGuide (2026-10-21) exige `X-API-Key`
   (`kb-rag-system/api/main.py`, `verify_api_key`). La clave la emite quien opera ese

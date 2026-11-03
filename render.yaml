@@ -40,8 +40,11 @@ services:
       # Consulta con el servicio real de ForUsGuide. La X-API-Key solo en el panel.
       - key: KD_MODO
         value: forusguide
+      # Producción actual de ForUsGuide (Cloud Run). Según su OpenAPI, verificada el
+      # 2026-11-03, solo pide X-API-Key, sin identidad de Google. La URL anterior,
+      # https://forusguide.onrender.com, es una versión antigua.
       - key: FORUSGUIDE_API_URL
-        value: https://forusguide.onrender.com
+        value: https://kb-rag-system-900340137010.us-central1.run.app
       - key: FORUSGUIDE_API_KEY
         sync: false
       # Opcional y APAGADA en esta vista previa: con "true", antes de cada consulta

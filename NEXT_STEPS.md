@@ -132,9 +132,15 @@ La vista previa usa ya el modo `forusguide`, pero **solo para consultar**. Carga
 reemplazar o eliminar artículos en ese modo sigue condicionado.
 
 1. **Accesos.**
-   - **Disponibles y en uso**: la URL `https://forusguide.onrender.com` y una
-     `X-API-Key`, verificadas en vivo. Falta confirmar si ese entorno es producción:
-     si lo es, cada consulta pública de la vista previa lo carga.
+   - **Endpoint de producción identificado y configurado**: ForUsGuide en Cloud Run,
+     `https://kb-rag-system-900340137010.us-central1.run.app`.
+     - Su OpenAPI, verificada el 2026-11-03, solo pide `X-API-Key`, sin identidad de
+       Google.
+     - Sustituye a `https://forusguide.onrender.com`, una versión antigua.
+     - Es producción: cada consulta pública de la vista previa la carga.
+     - **Requisito**: una `X-API-Key` vigente y autorizada para Knowledge Desk en ese
+       servicio. No está validada todavía: con la clave configurada antes, la
+       consulta real recibió 403 `UPSTREAM_AUTH_ERROR` (`req-20e9a6b0`).
    - **Pendientes**: credenciales de Pinecone con escritura sobre el índice y el
      namespace que lee ForUsGuide. Solo hacen falta para indexar desde Knowledge
      Desk, y escribir en ese índice compartido exige autorización expresa de sus
