@@ -44,11 +44,13 @@ services:
         value: https://forusguide.onrender.com
       - key: FORUSGUIDE_API_KEY
         sync: false
-      # Antes de cada consulta, un único GET /health espera el arranque normal de
-      # ForUsGuide (cerca de un minuto si estaba suspendido). Por eso el plazo de
-      # la consulta usa el máximo admitido: salud más respuesta.
+      # Opcional y APAGADA en esta vista previa: con "true", antes de cada consulta
+      # un único GET /health esperaría el arranque normal de ForUsGuide. Probada el
+      # 2026-11-03, la plataforma también rechazó ese GET (429), así que se deja
+      # la consulta directa. Activarla no resuelve un bloqueo de la plataforma.
       - key: FORUSGUIDE_COMPROBAR_SALUD
-        value: "true"
+        value: "false"
+      # El máximo admitido: cubre las consultas lentas de ForUsGuide.
       - key: KD_CONSULTA_TIMEOUT_MS
         value: "120000"
       # Límite de artículos JSON (sin efecto mientras no haya indexación).
