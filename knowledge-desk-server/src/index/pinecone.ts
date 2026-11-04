@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { Pinecone } from '@pinecone-database/pinecone'
 import type { PineconeConfig } from '../config.ts'
-import { IndiceError, type Coincidencia, type IndiceCorpus, type OpcionesBusqueda, type RegistroIndice } from './types.ts'
+import { IndiceError, type BuscadorCorpus, type Coincidencia, type IndiceCorpus, type OpcionesBusqueda, type RegistroIndice } from './types.ts'
 
 const LOTE_UPSERT = 96 // límite de Pinecone para registros de texto con embeddings integrados
 const LOTE_DELETE = 1000
@@ -19,7 +19,10 @@ function clasificar(error: unknown, accion: string, signal?: AbortSignal): Indic
 // registro que su pipeline (campo "content" embebido por Pinecone con
 // llama-text-embed-v2 y metadatos planos), así lo que se indexa aquí es
 // recuperable por el endpoint knowledge-question.
-export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi?: FetchApi; maxRetries?: number } = {}): IndiceCorpus {
+//
+// soloLectura (modo directo): upsert, listado y borrado se rechazan antes de
+// cualquier petición. Solo se busca.
+export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi?: FetchApi; maxRetries?: number; soloLectura?: boolean } = {}): IndiceCorpus & BuscadorCorpus {
   // El SDK no acepta una señal por operación. Cada llamada guarda la suya en un
   // contexto asíncrono y el fetch del SDK la usa, así cancelar corta de verdad
   // la petición HTTP en vuelo.
@@ -47,13 +50,17 @@ export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi
     }
   }
 
+  function exigirEscritura(accion: string) {
+    if (opciones.soloLectura) throw new IndiceError('solo_lectura', `El índice compartido es de solo lectura: no se permite ${accion}`)
+  }
+
   async function buscar(texto: string, topK: number, extra: OpcionesBusqueda & { soloArticulo?: string } = {}): Promise<Coincidencia[]> {
     const filtro = extra.soloArticulo
       ? { article_id: { $eq: extra.soloArticulo } }
       : extra.excluirArticulos?.length ? { article_id: { $nin: extra.excluirArticulos } } : undefined
     const respuesta = await ejecutar('la búsqueda', extra.signal, () => indice.searchRecords({
       query: { topK, inputs: { text: texto }, ...(filtro ? { filter: filtro } : {}) },
-      fields: ['article_id', 'article_title', 'chunk_type', 'content', 'kd_json_paths'],
+      fields: ['article_id', 'article_title', 'chunk_type', 'chunk_index', 'content', 'kd_json_paths'],
     }))
     return (respuesta.result?.hits ?? []).map(hit => ({
       id: hit._id,
@@ -67,6 +74,7 @@ export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi
     descripcion: `Pinecone · namespace ${config.namespace}`,
 
     async upsert(registros: RegistroIndice[], signal?: AbortSignal) {
+      exigirEscritura('el upsert de registros')
       for (let inicio = 0; inicio < registros.length; inicio += LOTE_UPSERT) {
         const lote = registros.slice(inicio, inicio + LOTE_UPSERT).map(registro => ({ _id: registro.id, content: registro.texto, ...registro.metadata }))
         await ejecutar('el upsert de registros', signal, () => indice.upsertRecords({ records: lote }))
@@ -74,6 +82,7 @@ export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi
     },
 
     async listarIds(prefijo: string, signal?: AbortSignal) {
+      exigirEscritura('el listado de registros')
       const ids: string[] = []
       let token: string | undefined
       do {
@@ -85,6 +94,7 @@ export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi
     },
 
     async eliminar(ids: string[], signal?: AbortSignal) {
+      exigirEscritura('el borrado de registros')
       for (let inicio = 0; inicio < ids.length; inicio += LOTE_DELETE) {
         const lote = ids.slice(inicio, inicio + LOTE_DELETE)
         await ejecutar('el borrado de registros', signal, () => indice.deleteMany({ ids: lote }))
@@ -92,6 +102,9 @@ export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi
     },
 
     buscar: (texto, topK, extra) => buscar(texto, topK, extra),
+
+    // Fragmentos indexados de un artículo, con una búsqueda filtrada por su ID.
+    fragmentosArticulo: (articleId, signal) => buscar(articleId, 200, { signal, soloArticulo: articleId }),
 
     async esBuscable(articleId: string, textoMuestra: string, signal?: AbortSignal) {
       const hits = await buscar(textoMuestra, 1, { signal, soloArticulo: articleId })

@@ -3,8 +3,9 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import multipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify'
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import { capacidades, type Config } from './config.ts'
+import { crearMotorDirecto } from './consulta/directo.ts'
 import { crearMotorForUsGuide } from './consulta/forusguide.ts'
 import { crearMotorLocal } from './consulta/local.ts'
 import type { Motor } from './consulta/motor.ts'
@@ -17,7 +18,7 @@ import { Ejemplos, type Verificador } from './examples.ts'
 import { esArticuloKd, requestId } from './ids.ts'
 import { crearIndiceLocal, type IndiceLocal } from './index/local.ts'
 import { crearIndicePinecone } from './index/pinecone.ts'
-import type { IndiceCorpus } from './index/types.ts'
+import type { BuscadorCorpus, IndiceCorpus } from './index/types.ts'
 import { crearProveedor } from './providers/openaiCompatible.ts'
 
 type FetchImpl = typeof fetch
@@ -47,7 +48,13 @@ export async function construirServicios(config: Config, inyecciones: Inyeccione
   const proveedor = config.proveedor ? crearProveedor(config.proveedor, inyecciones.fetchProveedor) : null
   let indice: IndiceCorpus | null = null
   let indiceLocal: IndiceLocal | null = null
-  if (config.modo === 'forusguide' && config.pinecone) {
+  // Modo directo: solo un buscador sobre el índice compartido, con el adaptador
+  // en solo lectura. El gestor de documentos no recibe índice, así que cargar,
+  // reemplazar o eliminar responden INDEX_NOT_CONFIGURED sin tocar Pinecone.
+  let buscador: BuscadorCorpus | null = null
+  if (config.modo === 'directo' && config.pinecone) {
+    buscador = crearIndicePinecone(config.pinecone, { fetchApi: inyecciones.fetchPinecone, maxRetries: inyecciones.pineconeMaxRetries, soloLectura: true })
+  } else if (config.modo === 'forusguide' && config.pinecone) {
     indice = crearIndicePinecone(config.pinecone, { fetchApi: inyecciones.fetchPinecone, maxRetries: inyecciones.pineconeMaxRetries })
   } else if (config.modo === 'local' && proveedor && config.proveedor?.embeddingModel) {
     indiceLocal = crearIndiceLocal(config.dataDir, proveedor)
@@ -57,6 +64,8 @@ export async function construirServicios(config: Config, inyecciones: Inyeccione
   let motor: Motor | null = null
   if (config.modo === 'forusguide' && config.forusguide) {
     motor = crearMotorForUsGuide(config.forusguide, inyecciones.fetchForUsGuide)
+  } else if (config.modo === 'directo' && proveedor && buscador && config.proveedor?.chatModel) {
+    motor = crearMotorDirecto({ proveedor, buscador, umbrales: config.cobertura })
   } else if (config.modo === 'local' && proveedor && indiceLocal && config.proveedor?.chatModel) {
     motor = crearMotorLocal({
       proveedor, indice: indiceLocal, umbrales: config.cobertura, topK: config.localTopK,
@@ -70,8 +79,9 @@ export async function construirServicios(config: Config, inyecciones: Inyeccione
   // Un ejemplo solo se muestra si el corpus activo tiene evidencia para él. En
   // Pinecone se excluyen antes del corte las versiones que no pueden sustentar.
   let verificador: Verificador | null = null
-  if (indice) {
-    const actual = indice
+  const busqueda = indice ?? buscador
+  if (busqueda) {
+    const actual = busqueda
     verificador = async pregunta => {
       const hits = await actual.buscar(pregunta, 5, { excluirArticulos: registro.articulosNoServibles(), signal: AbortSignal.timeout(15_000) })
       return hits.some(hit => {
@@ -113,6 +123,8 @@ function idDocumento(valor: string): string {
   if (!PATRON_DOCUMENTO.test(valor)) throw new KdError('NOT_FOUND', 'El documento no existe.')
   return valor
 }
+
+export const RUTA_KNOWLEDGE_QUESTION = '/api/v1/knowledge-question'
 
 const ARTICULO = /^[A-Za-z0-9_.:-]{1,200}$/
 
@@ -226,7 +238,7 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
       if (kd.diagnostico) request.log.warn({ code: kd.code, externo: kd.diagnostico }, 'respuesta externa no satisfactoria')
     } else if (error.code === 'FST_REQ_FILE_TOO_LARGE') kd = new KdError('FILE_TOO_LARGE')
     else if (error.code === 'FST_INVALID_MULTIPART_CONTENT_TYPE' || error.code === 'FST_FILES_LIMIT' || error.code === 'FST_PARTS_LIMIT') kd = new KdError('FILE_REQUIRED', 'Envía un único archivo en el campo "archivo".')
-    else if (request.url.startsWith('/api/consulta') && (error.statusCode === 400 || error.statusCode === 413 || error.statusCode === 415)) {
+    else if ((request.url.startsWith('/api/consulta') || request.url.startsWith(RUTA_KNOWLEDGE_QUESTION)) && (error.statusCode === 400 || error.statusCode === 413 || error.statusCode === 415)) {
       kd = new KdError('VALIDATION_ERROR', 'La pregunta no es válida: el cuerpo de la solicitud no tiene el formato esperado.', { motivo: 'formato' })
     } else if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
       kd = new KdError('NOT_FOUND', 'La solicitud no es válida.')
@@ -260,6 +272,8 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
       modo: config.modo,
       consulta: { configurada: servicios.motor !== null, motor: servicios.motor?.nombre ?? null },
       indexacion: { configurada: servicios.indice !== null, destino: servicios.indice?.descripcion ?? null },
+      // Solo el destino de búsqueda (sin host ni claves) del modo directo.
+      ...(config.modo === 'directo' && config.pinecone ? { busqueda: { destino: `Pinecone · namespace ${config.pinecone.namespace}`, soloLectura: true } } : {}),
       faltan: puede.faltan,
       limites: { preguntaMin: MIN_PREGUNTA, preguntaMax: MAX_PREGUNTA, archivoMaxBytes: config.maxUploadBytes, formatos: ['json'], esquema: 'kb_article_v2' },
       // Solo el stack de demostración activa esta marca: la interfaz la muestra
@@ -284,14 +298,19 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
 
   // --- Consulta (HU01–HU05, HU10) -------------------------------------------
 
-  app.post('/api/consulta', async (request, reply) => {
+  async function responderConsulta(request: FastifyRequest, reply: FastifyReply) {
     const respuesta = await consultar({
       motor: servicios.motor, registro, umbrales: config.cobertura, timeoutMs: config.consultaTimeoutMs,
       alDetectarNoServibles: () => gestor.solicitarLimpieza(),
     }, request.body, request.id)
     reply.header('cache-control', 'no-store')
     return respuesta
-  })
+  }
+  app.post('/api/consulta', responderConsulta)
+  // Alias con la ruta de ForUsGuide para clientes que ya la usan. Mismo acceso,
+  // validación, límites y contrato que /api/consulta (el de Knowledge Desk, no
+  // el de ForUsGuide).
+  app.post(RUTA_KNOWLEDGE_QUESTION, responderConsulta)
 
   // Fuente externa (artículo del corpus de ForUsGuide). ForUsGuide no expone el
   // archivo JSON original: lo que se devuelve son los fragmentos INDEXADOS de

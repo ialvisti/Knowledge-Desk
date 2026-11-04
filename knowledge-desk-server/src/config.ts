@@ -7,9 +7,13 @@ import { fileURLToPath } from 'node:url'
 //    los documentos se indexan en el mismo índice Pinecone que ese backend lee.
 //  - local: índice vectorial propio y un proveedor OpenAI-compatible para
 //    embeddings y redacción.
+//  - directo: el pipeline knowledge-question de ForUsGuide reproducido aquí,
+//    sin ForUsGuide: búsqueda de texto en el índice Pinecone compartido (solo
+//    lectura, embeddings integrados) y redacción con un proveedor
+//    OpenAI-compatible. Nunca indexa, borra ni siembra en ese índice.
 //  - sin_configurar: el servidor arranca, pero informa que no puede consultar ni
 //    indexar. Nunca inventa respuestas ni estados.
-export type Modo = 'forusguide' | 'local' | 'sin_configurar'
+export type Modo = 'forusguide' | 'local' | 'directo' | 'sin_configurar'
 
 // comprobarSalud: antes de cada consulta, un GET /health que espera el arranque
 // normal del servicio (FORUSGUIDE_COMPROBAR_SALUD; desactivado por defecto).
@@ -17,7 +21,9 @@ export interface ForUsGuideConfig { url: string; apiKey: string | null; comproba
 export interface PineconeConfig { apiKey: string; indexHost: string; namespace: string }
 // chatReasoningEffort: solo para modelos de razonamiento que aceptan temperature 0
 // únicamente con reasoning_effort "none". Sin valor, el cuerpo del chat no cambia.
-export interface ProveedorConfig { baseUrl: string; apiKey: string | null; embeddingModel: string; chatModel: string; chatReasoningEffort: 'none' | null }
+// temperatura: 0 en modo local; null en directo, donde se omite porque los
+// modelos de razonamiento (gpt-5.x) solo aceptan la temperatura por defecto.
+export interface ProveedorConfig { baseUrl: string; apiKey: string | null; embeddingModel: string; chatModel: string; chatReasoningEffort: 'none' | null; temperatura?: number | null }
 
 export interface Config {
   host: string
@@ -83,7 +89,7 @@ function numero(env: NodeJS.ProcessEnv, name: string, fallback: number): number 
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const modoRaw = texto(env, 'KD_MODO')
-  if (modoRaw && !['forusguide', 'local'].includes(modoRaw)) throw new ConfigError('KD_MODO debe ser forusguide o local')
+  if (modoRaw && !['forusguide', 'local', 'directo'].includes(modoRaw)) throw new ConfigError('KD_MODO debe ser forusguide, local o directo')
   const modo: Modo = (modoRaw as Modo | null) ?? 'sin_configurar'
 
   const forusguideUrl = url(env, 'FORUSGUIDE_API_URL')
@@ -139,6 +145,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     if (modo === 'forusguide' && escritura.length) {
       throw new ConfigError(`KD_ACCESO_PUBLICO=true con KD_MODO=forusguide no admite ${escritura.join(', ')}: la vista pública solo consulta y no escribe en el índice compartido`)
     }
+    // En modo directo las claves de Pinecone son de lectura por construcción: el
+    // adaptador de ese modo rechaza upsert, listado y borrado, y el gestor de
+    // documentos no recibe índice. Por eso aquí sí se admiten.
   }
 
   const host = texto(env, 'KD_HOST') ?? (env.RENDER ? '0.0.0.0' : '127.0.0.1')
@@ -157,16 +166,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     modo,
     consultaTimeoutMs,
     forusguide: modo === 'forusguide' && forusguideUrl ? { url: forusguideUrl, apiKey: texto(env, 'FORUSGUIDE_API_KEY'), comprobarSalud: comprobarSalud === 'true' } : null,
-    pinecone: modo === 'forusguide' && pineconeKey && pineconeHost
+    pinecone: (modo === 'forusguide' || modo === 'directo') && pineconeKey && pineconeHost
       ? { apiKey: pineconeKey, indexHost: pineconeHost, namespace: texto(env, 'PINECONE_NAMESPACE') ?? 'kb_articles' }
       : null,
-    proveedor: modo === 'local' && proveedorUrl
+    proveedor: (modo === 'local' || modo === 'directo') && proveedorUrl
       ? {
           baseUrl: proveedorUrl,
           apiKey: texto(env, 'KD_LLM_API_KEY'),
-          embeddingModel: texto(env, 'KD_EMBEDDINGS_MODEL') ?? '',
+          // El modo directo no calcula embeddings: Pinecone los genera al buscar.
+          embeddingModel: modo === 'local' ? texto(env, 'KD_EMBEDDINGS_MODEL') ?? '' : '',
           chatModel: texto(env, 'KD_CHAT_MODEL') ?? '',
           chatReasoningEffort: esfuerzo,
+          temperatura: modo === 'local' ? 0 : null,
         }
       : null,
     cobertura: {
@@ -198,7 +209,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 export function capacidades(config: Config) {
   const consulta = config.modo === 'forusguide'
     ? config.forusguide !== null
-    : config.modo === 'local' && config.proveedor !== null && Boolean(config.proveedor.chatModel) && Boolean(config.proveedor.embeddingModel)
+    : config.modo === 'directo'
+      ? config.pinecone !== null && config.proveedor !== null && Boolean(config.proveedor.chatModel)
+      : config.modo === 'local' && config.proveedor !== null && Boolean(config.proveedor.chatModel) && Boolean(config.proveedor.embeddingModel)
+  // El modo directo nunca indexa: el índice compartido es de solo lectura.
   const indexacion = config.modo === 'forusguide'
     ? config.pinecone !== null
     : config.modo === 'local' && config.proveedor !== null && Boolean(config.proveedor.embeddingModel)
@@ -207,6 +221,11 @@ export function capacidades(config: Config) {
   if (config.modo === 'forusguide') {
     if (!config.forusguide) faltan.push('FORUSGUIDE_API_URL')
     if (!config.pinecone) faltan.push('PINECONE_API_KEY', 'PINECONE_INDEX_HOST')
+  }
+  if (config.modo === 'directo') {
+    if (!config.pinecone) faltan.push('PINECONE_API_KEY', 'PINECONE_INDEX_HOST')
+    if (!config.proveedor) faltan.push('KD_LLM_BASE_URL')
+    if (!config.proveedor?.chatModel) faltan.push('KD_CHAT_MODEL')
   }
   if (config.modo === 'local') {
     if (!config.proveedor) faltan.push('KD_LLM_BASE_URL')

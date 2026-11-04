@@ -52,7 +52,7 @@ export interface ContratoConsulta {
   found_documents: Fuente[]
   contradictions: { description: string; source_ids: string[] }[]
   retrieval: { fragments_retrieved: number; articles_consulted: number; model: string | null; sub_queries: string[]; generated: boolean }
-  engine: 'forusguide' | 'local'
+  engine: 'forusguide' | 'local' | 'directo'
   elapsed_ms: number
   corpus_revision: number
 }
@@ -66,7 +66,7 @@ export interface ErrorContrato {
 }
 
 export interface EstadoServidor {
-  modo: 'forusguide' | 'local' | 'sin_configurar'
+  modo: 'forusguide' | 'local' | 'directo' | 'sin_configurar'
   consulta: { configurada: boolean; motor: string | null }
   indexacion: { configurada: boolean; destino: string | null }
   faltan: string[]

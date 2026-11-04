@@ -52,6 +52,8 @@ Navegador ── mismo origen ──▶ Servidor de Knowledge Desk (Node 24 + Fa
                                │
                                ├─ modo forusguide ─▶ ForUsGuide POST /api/v1/knowledge-question (X-API-Key)
                                │                     + Pinecone, mismo índice y namespace
+                               ├─ modo directo ────▶ Pinecone (búsqueda de texto, SOLO LECTURA, embeddings
+                               │                     integrados) + proveedor OpenAI-compatible (chat)
                                └─ modo local ──────▶ proveedor OpenAI-compatible (embeddings y chat)
                                                      + índice vectorial propio en KD_DATA_DIR
 ```
@@ -74,6 +76,7 @@ Navegador ── mismo origen ──▶ Servidor de Knowledge Desk (Node 24 + Fa
 | Modo (`KD_MODO`) | Consulta | Artículos JSON | Para qué |
 | --- | --- | --- | --- |
 | `forusguide` | ForUsGuide recupera, arma el contexto y redacta. Knowledge Desk valida, aplica la cobertura y bloquea respuestas con versiones no servibles | Se indexan en el **mismo** índice y namespace de Pinecone que lee ForUsGuide | Usar el corpus y el motor de ForUsGuide |
+| `directo` | El pipeline knowledge-question de ForUsGuide reproducido en Knowledge Desk, **sin ForUsGuide**: subconsultas con el modelo, búsqueda de texto en el índice Pinecone compartido (15 fragmentos por consulta, embeddings integrados de Pinecone), contexto diverso (6 por artículo, tipos prioritarios), redacción y validación de citas de Knowledge Desk | **No se indexa**: el adaptador de Pinecone es de solo lectura y el gestor no recibe índice | Consultar el corpus de ForUsGuide sin depender de su API, n8n ni Cloud Run |
 | `local` | Todo el flujo en Knowledge Desk: búsqueda semántica, subpreguntas, deduplicación previa, contexto solo con versiones servibles y validación de citas | Índice propio en disco | Corpus propio con cualquier proveedor OpenAI-compatible |
 | sin valor | `INTEGRATION_NOT_CONFIGURED`: nunca inventa respuestas | No se indexa | Arranque sin configuración |
 | simulado (`scripts\simulado.ps1`) | Servidor real contra simuladores locales de ForUsGuide y Pinecone. La interfaz avisa "Modo demostración" | Pipeline real contra el índice simulado | Demostración y pruebas, sin Internet |
@@ -117,6 +120,14 @@ procesos en segundo plano corren en la misma consola y al terminar se detiene so
      `PINECONE_INDEX_HOST` y `PINECONE_NAMESPACE` (el que lee ForUsGuide; por defecto
      `kb_articles`). Cargar, reemplazar o eliminar **escribe en ese índice
      compartido**: requiere autorización de sus responsables.
+   - `KD_MODO=directo`: rellena `PINECONE_API_KEY`, `PINECONE_INDEX_HOST` y
+     `PINECONE_NAMESPACE` (`kb_articles`), y `KD_LLM_BASE_URL`
+     (`https://api.openai.com/v1`), `KD_LLM_API_KEY` y `KD_CHAT_MODEL` (`gpt-5.5`, el
+     modelo de ForUsGuide). No hacen falta `FORUSGUIDE_*` ni `KD_EMBEDDINGS_MODEL`. La
+     clave de Pinecone solo se usa para buscar: cargar, reemplazar o eliminar
+     responden `INDEX_NOT_CONFIGURED` y el adaptador rechaza upsert, listado y borrado
+     antes de llamar a Pinecone. `POST /api/v1/knowledge-question` es un alias de
+     `POST /api/consulta` con el mismo acceso, validación y contrato de Knowledge Desk.
    - `KD_MODO=local`: rellena `KD_LLM_BASE_URL` (por ejemplo `https://api.openai.com/v1`
      o un Ollama local), `KD_LLM_API_KEY`, `KD_EMBEDDINGS_MODEL` y `KD_CHAT_MODEL`.
 3. Arranca:

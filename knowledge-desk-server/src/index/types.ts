@@ -15,7 +15,7 @@ export interface Coincidencia {
 // Un error del índice nunca lleva el cuerpo de la respuesta externa: solo una
 // clase estable para decidir si se reintenta o cómo se informa.
 export class IndiceError extends Error {
-  readonly tipo: 'no_disponible' | 'solicitud' | 'embeddings' | 'cancelado'
+  readonly tipo: 'no_disponible' | 'solicitud' | 'embeddings' | 'cancelado' | 'solo_lectura'
   constructor(tipo: IndiceError['tipo'], mensaje: string) {
     super(mensaje)
     this.name = 'IndiceError'
@@ -40,4 +40,11 @@ export interface IndiceCorpus {
   // true cuando el artículo ya aparece en búsquedas. Listar un ID no garantiza
   // que la búsqueda lo encuentre: Pinecone es eventualmente consistente.
   esBuscable(articleId: string, textoMuestra: string, signal?: AbortSignal): Promise<boolean>
+}
+
+// Lo único que el modo directo puede hacer con el índice compartido: buscar.
+export interface BuscadorCorpus {
+  readonly descripcion: string
+  buscar(texto: string, topK: number, opciones?: OpcionesBusqueda): Promise<Coincidencia[]>
+  fragmentosArticulo(articleId: string, signal?: AbortSignal): Promise<Coincidencia[]>
 }

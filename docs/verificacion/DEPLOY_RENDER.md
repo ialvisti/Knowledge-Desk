@@ -15,6 +15,29 @@
 | Datos | `KD_DATA_DIR=/tmp/knowledge-desk`, `KD_DATOS_TEMPORALES=true`, JSON de hasta 10 MB |
 | Secretos | Solo en el panel de Render; nunca en el repositorio ni en este registro. Actual: `FORUSGUIDE_API_KEY`, que se transfirió en privado. La clave de OpenAI y las credenciales de piloto de `9337e67` ya no están en el panel |
 
+## Próximo despliegue preparado: modo `directo` (pendiente de aplicar)
+
+`render.yaml` ya describe `KD_MODO=directo`: el pipeline knowledge-question corre en
+Knowledge Desk sin ForUsGuide, n8n ni Cloud Run. Hasta que se aplique, el servicio
+publicado sigue como indica la tabla anterior. Para aplicarlo, en el panel de Render:
+
+| Variable | Valor |
+| --- | --- |
+| `KD_MODO` | `directo` |
+| `PINECONE_API_KEY` | secreto (`sync: false`), clave con lectura del índice `kb-articles-production` |
+| `PINECONE_INDEX_HOST` | `sync: false`, host del índice `kb-articles-production` en la consola de Pinecone (`https://…svc.aped-4627-b74a.pinecone.io`) |
+| `PINECONE_NAMESPACE` | `kb_articles` |
+| `KD_LLM_BASE_URL` | `https://api.openai.com/v1` |
+| `KD_LLM_API_KEY` | secreto (`sync: false`) |
+| `KD_CHAT_MODEL` | `gpt-5.5` |
+| `KD_CONSULTA_TIMEOUT_MS` | `120000` |
+
+Se pueden retirar `FORUSGUIDE_API_URL`, `FORUSGUIDE_API_KEY` y
+`FORUSGUIDE_COMPROBAR_SALUD`: el modo directo no los lee. Con `KD_ACCESO_PUBLICO=true`
+el modo directo admite las claves de Pinecone porque solo busca: el adaptador rechaza
+upsert, listado y borrado antes de llamar a Pinecone, y el servidor responde
+`INDEX_NOT_CONFIGURED` a cargas, reemplazos y eliminaciones.
+
 ## Restricciones de esta vista previa
 
 - **Los datos son temporales.**

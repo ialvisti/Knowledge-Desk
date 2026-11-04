@@ -1,16 +1,18 @@
 # Blueprint de Render para la VISTA PREVIA GRATUITA de Knowledge Desk: un único
 # web service que sirve la API y la interfaz compilada en el mismo origen.
 #
-# - Motor de consulta: el servicio REAL de ForUsGuide (KD_MODO=forusguide,
-#   POST /api/v1/knowledge-question). Las respuestas y fuentes salen de su corpus.
-# - Solo consulta: sin PINECONE_*, Knowledge Desk no tiene indexación y nunca
-#   escribe, siembra ni borra en el índice compartido de ForUsGuide. El servidor
-#   no admite cargas: Documentos abre la colección del navegador (IndexedDB de
-#   cada usuario), independiente de ForUsGuide y de este servidor. Con
-#   KD_ACCESO_PUBLICO=true el servidor se niega a arrancar si alguien añade
-#   PINECONE_API_KEY o PINECONE_INDEX_HOST.
+# - Motor de consulta: KD_MODO=directo. El pipeline knowledge-question de
+#   ForUsGuide corre dentro de Knowledge Desk, sin ForUsGuide, n8n ni Cloud Run:
+#   búsqueda de texto en el índice Pinecone compartido (embeddings integrados) y
+#   redacción con la API de OpenAI. Las respuestas y fuentes salen del corpus de
+#   ForUsGuide (namespace kb_articles).
+# - Solo consulta: en modo directo la clave de Pinecone únicamente busca. El
+#   adaptador rechaza upsert, listado y borrado antes de llamar a Pinecone y el
+#   servidor no admite cargas (INDEX_NOT_CONFIGURED). Documentos abre la
+#   colección del navegador (IndexedDB de cada usuario).
 # - Acceso público (KD_ACCESO_PUBLICO=true): sin inicio de sesión. Cada consulta
-#   llama a ForUsGuide con la clave del servidor y consume su cuota.
+#   hace 2 llamadas al modelo y 1-4 búsquedas en Pinecone con las claves del
+#   servidor, y consume su cuota.
 # - Plan free, sin disco: el registro local vive en /tmp y es temporal
 #   (KD_DATOS_TEMPORALES=true). La persistencia es un paso futuro no autorizado.
 # - No contiene secretos. Las variables con "sync: false" se rellenan en el panel
@@ -37,23 +39,26 @@ services:
         value: /tmp/knowledge-desk
       - key: KD_DATOS_TEMPORALES
         value: "true"
-      # Consulta con el servicio real de ForUsGuide. La X-API-Key solo en el panel.
+      # Pipeline knowledge-question sin ForUsGuide. Las claves solo en el panel.
       - key: KD_MODO
-        value: forusguide
-      # Producción actual de ForUsGuide (Cloud Run). Según su OpenAPI, verificada el
-      # 2026-11-03, solo pide X-API-Key, sin identidad de Google. La URL anterior,
-      # https://forusguide.onrender.com, es una versión antigua.
-      - key: FORUSGUIDE_API_URL
-        value: https://kb-rag-system-900340137010.us-central1.run.app
-      - key: FORUSGUIDE_API_KEY
+        value: directo
+      # Índice compartido de ForUsGuide (kb-articles-production), solo lectura.
+      # El host está en la consola de Pinecone (https://<índice>-<proyecto>.svc.<región>.pinecone.io).
+      - key: PINECONE_API_KEY
         sync: false
-      # Opcional y APAGADA en esta vista previa: con "true", antes de cada consulta
-      # un único GET /health esperaría el arranque normal de ForUsGuide. Probada el
-      # 2026-11-03, la plataforma también rechazó ese GET (429), así que se deja
-      # la consulta directa. Activarla no resuelve un bloqueo de la plataforma.
-      - key: FORUSGUIDE_COMPROBAR_SALUD
-        value: "false"
-      # El máximo admitido: cubre las consultas lentas de ForUsGuide.
+      - key: PINECONE_INDEX_HOST
+        sync: false
+      - key: PINECONE_NAMESPACE
+        value: kb_articles
+      # Redacción y subconsultas con el mismo modelo que usa ForUsGuide.
+      - key: KD_LLM_BASE_URL
+        value: https://api.openai.com/v1
+      - key: KD_LLM_API_KEY
+        sync: false
+      - key: KD_CHAT_MODEL
+        value: gpt-5.5
+      # El máximo admitido: dos llamadas a un modelo de razonamiento (~15-25 s) más
+      # el arranque en frío del plan free.
       - key: KD_CONSULTA_TIMEOUT_MS
         value: "120000"
       # Límite de artículos JSON (sin efecto mientras no haya indexación).
@@ -61,8 +66,8 @@ services:
         value: "10"
       # Acceso directo sin inicio de sesión, por decisión del usuario para esta
       # vista previa: cualquiera con la URL consulta. No se combina con
-      # KD_ACCESO_BASICO, KD_IDENTIDAD_HEADER, KD_PROXY_SECRETO, KD_OPERADORES ni,
-      # en este modo, PINECONE_*: si alguna está definida, el servidor no arranca.
+      # KD_ACCESO_BASICO, KD_IDENTIDAD_HEADER, KD_PROXY_SECRETO ni KD_OPERADORES:
+      # si alguna está definida, el servidor no arranca.
       - key: KD_ACCESO_PUBLICO
         value: "true"
       - key: KD_CONTACTO_URL

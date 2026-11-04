@@ -19,12 +19,12 @@ Reglas:
 Devuelve solo un objeto JSON con esta forma:
 {"respuesta": "texto con citas [n]", "puntos_clave": [{"texto": "...", "fuentes": [n]}], "vacios_de_cobertura": ["tema no cubierto"], "contradicciones": [{"descripcion": "...", "fuentes": [n, m]}]}`
 
-function errorProveedor(error: unknown, codigo: ErrorCode, signal: AbortSignal): KdError {
+export function errorProveedor(error: unknown, codigo: ErrorCode, signal: AbortSignal): KdError {
   if (signal.aborted || (error instanceof ProveedorError && error.tipo === 'timeout')) return new KdError('TIMEOUT', undefined, { origen: 'proveedor' })
   return new KdError(codigo, undefined, { origen: 'proveedor', tipo: error instanceof ProveedorError ? error.tipo : 'desconocido' })
 }
 
-function aEvidencia(coincidencia: Coincidencia): Evidencia {
+export function aEvidencia(coincidencia: Coincidencia): Evidencia {
   const meta = coincidencia.metadata
   return {
     chunkId: coincidencia.id,
@@ -82,6 +82,149 @@ function leerSalida(salida: unknown): SalidaModelo {
   }
 }
 
+export interface OpcionesContexto {
+  presupuestoCaracteres: number
+  maxPorDocumento: number
+  // Tipos de fragmento que entran primero tras el mejor de cada artículo
+  // (pipeline knowledge-question de ForUsGuide). Sin valor: orden por afinidad.
+  priorizarTipos?: string[]
+}
+
+const CONTEXTO_LOCAL: OpcionesContexto = { presupuestoCaracteres: PRESUPUESTO_CARACTERES, maxPorDocumento: MAX_POR_DOCUMENTO }
+
+// Contexto acotado y diverso. Con priorizarTipos se sigue el orden de
+// ForUsGuide: primero el mejor fragmento de cada artículo y después los tipos
+// prioritarios. Sin él, el orden de siempre del modo local: por afinidad.
+export function seleccionarContexto(relevantes: Evidencia[], opciones: OpcionesContexto): Evidencia[] {
+  let orden = relevantes
+  if (opciones.priorizarTipos) {
+    const prioritarios = new Set(opciones.priorizarTipos)
+    const mejores = new Map<string, Evidencia>()
+    for (const item of relevantes) if (!mejores.has(item.articleId)) mejores.set(item.articleId, item)
+    const primeros = [...mejores.values()]
+    const resto = relevantes.filter(item => !primeros.includes(item))
+    orden = [...primeros, ...resto.filter(item => prioritarios.has(item.chunkType)), ...resto.filter(item => !prioritarios.has(item.chunkType))]
+  }
+  const contexto: Evidencia[] = []
+  const porDocumento = new Map<string, number>()
+  let caracteres = 0
+  for (const item of orden) {
+    const usados = porDocumento.get(item.articleId) ?? 0
+    if (usados >= opciones.maxPorDocumento || caracteres + item.content.length > opciones.presupuestoCaracteres) continue
+    contexto.push(item)
+    porDocumento.set(item.articleId, usados + 1)
+    caracteres += item.content.length
+  }
+  // Las secciones se numeran por afinidad, como en el modo local.
+  return contexto.sort((a, b) => b.score - a.score)
+}
+
+// Pasos comunes a los modos local y directo: unificar la evidencia, no llamar al
+// modelo sin evidencia, construir el contexto y validar que cada afirmación
+// cite una sección real.
+export async function redactarConEvidencia(
+  deps: { proveedor: Proveedor; umbrales: Umbrales; motor: 'local' | 'directo'; contexto?: OpcionesContexto },
+  pregunta: string,
+  subconsultas: string[],
+  resultados: Coincidencia[][],
+  signal: AbortSignal,
+): Promise<ResultadoMotor> {
+  const opcionesContexto = deps.contexto ?? CONTEXTO_LOCAL
+  // 3. Unificar y deduplicar ANTES de construir el contexto: un fragmento
+  //    encontrado por varias búsquedas cuenta una vez, con su mejor afinidad.
+  //    El chunker de ForUsGuide repite a propósito las reglas de
+  //    elegibilidad (fragmento "eligibility" y "business_rules"): el mismo
+  //    texto del mismo artículo también entra una sola vez.
+  const unificados = new Map<string, Coincidencia>()
+  for (const lista of resultados) {
+    for (const coincidencia of lista) {
+      const clave = `${String(coincidencia.metadata.article_id ?? '')}\u0000${String(coincidencia.metadata.content ?? coincidencia.id)}`
+      const previa = unificados.get(clave)
+      if (!previa || previa.score < coincidencia.score) unificados.set(clave, coincidencia)
+    }
+  }
+  const ordenados = [...unificados.values()].sort((a, b) => b.score - a.score).map(aEvidencia)
+  const relevantes = ordenados.filter(item => item.score >= deps.umbrales.minScore)
+  const base = {
+    motor: deps.motor,
+    modelo: deps.proveedor.modeloChat,
+    subconsultas,
+    fragmentosRecuperados: ordenados.length,
+    articulosConsultados: new Set(ordenados.map(item => item.articleId)).size,
+    nivelMotor: null,
+  }
+
+  // 4. Sin evidencia no se llama al modelo: nada se genera desde su memoria.
+  const sinEvidencia = { ...base, respuesta: '', puntosClave: [], evidencia: [], vaciosCobertura: [], contradicciones: [], generada: false }
+  if (!relevantes.length) return sinEvidencia
+
+  // 5. Contexto acotado y diverso: solo fragmentos del corpus con su origen.
+  //    Un fragmento que no cabe en el presupuesto se omite entero (no se
+  //    trunca). Si ninguno cabe, tampoco se llama al modelo.
+  const contexto = seleccionarContexto(relevantes, opcionesContexto)
+  if (!contexto.length) return sinEvidencia
+  const secciones = contexto.map((item, posicion) => `[${posicion + 1}] Fuente: ${item.articleTitle}${item.paths.length ? ` (${item.paths.join(', ')})` : ''}\n${item.content}`)
+
+  let salida: unknown
+  try {
+    salida = await deps.proveedor.chatJson([
+      { role: 'system', content: PROMPT_SISTEMA },
+      { role: 'user', content: `SECCIONES:\n${secciones.join('\n\n')}\n\nPREGUNTA:\n${pregunta}` },
+    ], signal)
+  } catch (error) {
+    throw errorProveedor(error, 'AI_PROVIDER_ERROR', signal)
+  }
+
+  // 6. Trazabilidad (HU03). Toda afirmación debe citar una sección real del
+  //    contexto. Una sola referencia inexistente, una afirmación sin cita o
+  //    un punto clave sin fuente válida invalidan la respuesta entera: no se
+  //    ocultan citas inventadas ni se presenta como sustentada.
+  const { respuesta, puntos, contradicciones: crudas, vacios } = leerSalida(salida)
+  const valida = (indice: number) => Number.isInteger(indice) && indice >= 1 && indice <= contexto.length
+  const problemas: string[] = []
+  const citadas = new Set<number>()
+
+  if (!respuesta) problemas.push('el modelo no redactó una respuesta con el contexto disponible')
+  for (const unidad of unidadesAfirmativas(respuesta)) {
+    const referencias = citas(unidad)
+    if (referencias.some(indice => !valida(indice))) problemas.push('la respuesta cita secciones que no existen en el contexto')
+    else if (!referencias.length) problemas.push('la respuesta contiene afirmaciones sin cita')
+    referencias.filter(valida).forEach(indice => citadas.add(indice))
+  }
+  const puntosClave: string[] = []
+  for (const punto of puntos) {
+    const referencias = [...punto.fuentes, ...citas(punto.texto)]
+    if (!referencias.length) problemas.push('un punto clave no indica su fuente')
+    else if (referencias.some(indice => !valida(indice))) problemas.push('un punto clave cita secciones que no existen en el contexto')
+    else referencias.forEach(indice => citadas.add(indice))
+    puntosClave.push(quitarCitas(punto.texto))
+  }
+  const contradicciones: Contradiccion[] = []
+  for (const contradiccion of crudas) {
+    if (contradiccion.fuentes.length < 2 || contradiccion.fuentes.some(indice => !valida(indice))) {
+      problemas.push('una contradicción declarada no remite a dos secciones reales del contexto')
+      continue
+    }
+    contradiccion.fuentes.forEach(indice => citadas.add(indice))
+    contradicciones.push({ descripcion: contradiccion.descripcion, articleIds: [...new Set(contradiccion.fuentes.map(indice => contexto[indice - 1].articleId))] })
+  }
+
+  // Las fuentes son las secciones citadas: contexto realmente usado.
+  const sustentadas = [...citadas].sort((a, b) => a - b).map(indice => contexto[indice - 1])
+  const motivos = [...new Set(problemas)]
+  return {
+    ...base,
+    respuesta: motivos.length ? '' : quitarCitas(respuesta),
+    puntosClave: motivos.length ? [] : puntosClave,
+    evidencia: sustentadas.length ? sustentadas : contexto,
+    vaciosCobertura: vacios,
+    contradicciones: motivos.length ? [] : contradicciones,
+    generada: true,
+    sinSustento: motivos.length > 0,
+    motivoSinSustento: motivos.length ? motivos.join('; ') : undefined,
+  }
+}
+
 export function crearMotorLocal(deps: {
   proveedor: Proveedor
   indice: IndiceLocal
@@ -110,106 +253,7 @@ export function crearMotorLocal(deps: {
         throw new KdError('VECTOR_DB_UNAVAILABLE', undefined, { origen: 'indice-local' })
       }
 
-      // 3. Unificar y deduplicar ANTES de construir el contexto: un fragmento
-      //    encontrado por varias búsquedas cuenta una vez, con su mejor afinidad.
-      //    El chunker de ForUsGuide repite a propósito las reglas de
-      //    elegibilidad (fragmento "eligibility" y "business_rules"): el mismo
-      //    texto del mismo artículo también entra una sola vez.
-      const unificados = new Map<string, Coincidencia>()
-      for (const lista of resultados) {
-        for (const coincidencia of lista) {
-          const clave = `${String(coincidencia.metadata.article_id ?? '')}\u0000${String(coincidencia.metadata.content ?? coincidencia.id)}`
-          const previa = unificados.get(clave)
-          if (!previa || previa.score < coincidencia.score) unificados.set(clave, coincidencia)
-        }
-      }
-      const ordenados = [...unificados.values()].sort((a, b) => b.score - a.score).map(aEvidencia)
-      const relevantes = ordenados.filter(item => item.score >= deps.umbrales.minScore)
-      const base = {
-        motor: 'local' as const,
-        modelo: deps.proveedor.modeloChat,
-        subconsultas,
-        fragmentosRecuperados: ordenados.length,
-        articulosConsultados: new Set(ordenados.map(item => item.articleId)).size,
-        nivelMotor: null,
-      }
-
-      // 4. Sin evidencia no se llama al modelo: nada se genera desde su memoria.
-      if (!relevantes.length) {
-        return { ...base, respuesta: '', puntosClave: [], evidencia: [], vaciosCobertura: [], contradicciones: [], generada: false }
-      }
-
-      // 5. Contexto acotado y diverso: solo fragmentos del corpus con su origen.
-      const contexto: Evidencia[] = []
-      const porDocumento = new Map<string, number>()
-      let caracteres = 0
-      for (const item of relevantes) {
-        const usados = porDocumento.get(item.articleId) ?? 0
-        if (usados >= MAX_POR_DOCUMENTO || caracteres + item.content.length > PRESUPUESTO_CARACTERES) continue
-        contexto.push(item)
-        porDocumento.set(item.articleId, usados + 1)
-        caracteres += item.content.length
-      }
-      const secciones = contexto.map((item, posicion) => `[${posicion + 1}] Fuente: ${item.articleTitle}${item.paths.length ? ` (${item.paths.join(', ')})` : ''}\n${item.content}`)
-
-      let salida: unknown
-      try {
-        salida = await deps.proveedor.chatJson([
-          { role: 'system', content: PROMPT_SISTEMA },
-          { role: 'user', content: `SECCIONES:\n${secciones.join('\n\n')}\n\nPREGUNTA:\n${pregunta}` },
-        ], signal)
-      } catch (error) {
-        throw errorProveedor(error, 'AI_PROVIDER_ERROR', signal)
-      }
-
-      // 6. Trazabilidad (HU03). Toda afirmación debe citar una sección real del
-      //    contexto. Una sola referencia inexistente, una afirmación sin cita o
-      //    un punto clave sin fuente válida invalidan la respuesta entera: no se
-      //    ocultan citas inventadas ni se presenta como sustentada.
-      const { respuesta, puntos, contradicciones: crudas, vacios } = leerSalida(salida)
-      const valida = (indice: number) => Number.isInteger(indice) && indice >= 1 && indice <= contexto.length
-      const problemas: string[] = []
-      const citadas = new Set<number>()
-
-      if (!respuesta) problemas.push('el modelo no redactó una respuesta con el contexto disponible')
-      for (const unidad of unidadesAfirmativas(respuesta)) {
-        const referencias = citas(unidad)
-        if (referencias.some(indice => !valida(indice))) problemas.push('la respuesta cita secciones que no existen en el contexto')
-        else if (!referencias.length) problemas.push('la respuesta contiene afirmaciones sin cita')
-        referencias.filter(valida).forEach(indice => citadas.add(indice))
-      }
-      const puntosClave: string[] = []
-      for (const punto of puntos) {
-        const referencias = [...punto.fuentes, ...citas(punto.texto)]
-        if (!referencias.length) problemas.push('un punto clave no indica su fuente')
-        else if (referencias.some(indice => !valida(indice))) problemas.push('un punto clave cita secciones que no existen en el contexto')
-        else referencias.forEach(indice => citadas.add(indice))
-        puntosClave.push(quitarCitas(punto.texto))
-      }
-      const contradicciones: Contradiccion[] = []
-      for (const contradiccion of crudas) {
-        if (contradiccion.fuentes.length < 2 || contradiccion.fuentes.some(indice => !valida(indice))) {
-          problemas.push('una contradicción declarada no remite a dos secciones reales del contexto')
-          continue
-        }
-        contradiccion.fuentes.forEach(indice => citadas.add(indice))
-        contradicciones.push({ descripcion: contradiccion.descripcion, articleIds: [...new Set(contradiccion.fuentes.map(indice => contexto[indice - 1].articleId))] })
-      }
-
-      // Las fuentes son las secciones citadas: contexto realmente usado.
-      const sustentadas = [...citadas].sort((a, b) => a - b).map(indice => contexto[indice - 1])
-      const motivos = [...new Set(problemas)]
-      return {
-        ...base,
-        respuesta: motivos.length ? '' : quitarCitas(respuesta),
-        puntosClave: motivos.length ? [] : puntosClave,
-        evidencia: sustentadas.length ? sustentadas : contexto,
-        vaciosCobertura: vacios,
-        contradicciones: motivos.length ? [] : contradicciones,
-        generada: true,
-        sinSustento: motivos.length > 0,
-        motivoSinSustento: motivos.length ? motivos.join('; ') : undefined,
-      }
+      return redactarConEvidencia({ proveedor: deps.proveedor, umbrales: deps.umbrales, motor: 'local' }, pregunta, subconsultas, resultados, signal)
     },
   }
 }

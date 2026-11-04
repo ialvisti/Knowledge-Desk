@@ -1,4 +1,4 @@
-// Lo que un motor devuelve, sea ForUsGuide o el modo local. El servicio de
+// Lo que un motor devuelve, sea ForUsGuide, el modo local o el directo. El servicio de
 // consulta aplica después las mismas reglas de cobertura, fuentes y disponibilidad
 // documental a ambos, así la interfaz recibe un contrato único.
 export interface Evidencia {
@@ -15,7 +15,7 @@ export interface Evidencia {
 export interface Contradiccion { descripcion: string; articleIds: string[] }
 
 export interface ResultadoMotor {
-  motor: 'forusguide' | 'local'
+  motor: 'forusguide' | 'local' | 'directo'
   respuesta: string
   puntosClave: string[]
   // Fragmentos que entraron en el contexto de la respuesta.
@@ -46,7 +46,7 @@ export interface ArticuloCompleto {
 }
 
 export interface Motor {
-  readonly nombre: 'forusguide' | 'local'
+  readonly nombre: 'forusguide' | 'local' | 'directo'
   preguntar(pregunta: string, contexto: ContextoConsulta): Promise<ResultadoMotor>
   articulo?(articleId: string, contexto: ContextoConsulta): Promise<ArticuloCompleto>
 }

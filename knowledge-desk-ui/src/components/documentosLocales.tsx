@@ -26,7 +26,7 @@ export function EstadoLocal() {
 // Nota discreta sobre dónde se guardan los archivos. El alcance técnico queda
 // plegado: es real, pero no hace falta repetirlo en cada pantalla.
 export function AvisoColeccionLocal({ estado }: { estado: EstadoServidor | null }) {
-  const corpus = estado?.modo === 'forusguide' ? 'el corpus de ForUsGuide' : 'el corpus del servidor'
+  const corpus = estado?.modo === 'forusguide' || estado?.modo === 'directo' ? 'el corpus de ForUsGuide' : 'el corpus del servidor'
   return <div className="local-notice">
     <p><Icon name="info" />Tus archivos se guardan en este navegador. En una ventana privada se pierden al cerrarla. Buscar en documentos usa estos archivos; Consulta responde con {corpus}.</p>
     {estado?.indexacion.configurada && <p>Los artículos indexados en el servidor siguen en <Link to="/documentos">Documentos del servidor</Link>.</p>}
@@ -37,7 +37,7 @@ export function AvisoColeccionLocal({ estado }: { estado: EstadoServidor | null 
         <li>No forman parte del corpus de ForUsGuide ni de las respuestas de Consulta. Buscar en documentos encuentra fragmentos por coincidencia de palabras, sin embeddings ni generación de respuestas.</li>
         <li>Se borran al borrar los datos de este sitio, y el navegador puede liberarlos si se queda sin espacio.</li>
         <li>El texto se extrae en el navegador: PDF sin OCR, DOCX solo con los párrafos del cuerpo y TXT en UTF-8. Máximo 50 MB por archivo y 20 MB de texto extraído.</li>
-        {estado && !estado.indexacion.configurada && <li>Este servidor no tiene indexación configurada{estado.modo === 'forusguide' ? ' y solo consulta ForUsGuide' : ''}: no recibe archivos.</li>}
+        {estado && !estado.indexacion.configurada && <li>Este servidor no tiene indexación configurada{estado.modo === 'forusguide' ? ' y solo consulta ForUsGuide' : estado.modo === 'directo' ? ' y solo lee el índice compartido' : ''}: no recibe archivos.</li>}
       </ul>
     </details>
   </div>

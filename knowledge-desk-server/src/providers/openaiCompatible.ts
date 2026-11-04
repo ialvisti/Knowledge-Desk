@@ -92,7 +92,8 @@ export function crearProveedor(config: ProveedorConfig, fetchImpl: FetchImpl = f
       const cuerpo = await post('/chat/completions', {
         model: config.chatModel,
         messages: mensajes,
-        temperature: 0,
+        // Sin temperatura configurada (modo directo) se omite el campo.
+        ...(config.temperatura === null ? {} : { temperature: config.temperatura ?? 0 }),
         response_format: { type: 'json_object' },
         ...(config.chatReasoningEffort ? { reasoning_effort: config.chatReasoningEffort } : {}),
       }, signal) as { choices?: { message?: { content?: unknown } }[] }

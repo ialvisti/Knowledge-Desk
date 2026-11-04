@@ -113,10 +113,13 @@ function DocumentosServidor() {
   }
 
   // Sin indexación en modo forusguide, las respuestas salen del corpus de
-  // ForUsGuide y aquí no se carga nada: se dice tal cual.
+  // ForUsGuide y aquí no se carga nada: se dice tal cual. En modo directo el
+  // índice compartido es de solo lectura.
   const sinIndexacion = estado?.modo === 'forusguide'
     ? 'Las consultas usan el corpus de ForUsGuide. Este servidor no tiene indexación configurada: aquí no se cargan artículos.'
-    : 'La indexación no está configurada en este servidor.'
+    : estado?.modo === 'directo'
+      ? 'Las consultas leen el índice compartido de ForUsGuide en solo lectura: aquí no se cargan artículos.'
+      : 'La indexación no está configurada en este servidor.'
   const motivoBloqueo = !puede ? 'Tu acceso es solo de consulta.' : !indexacion ? sinIndexacion : null
 
   return <main id="contenido" tabIndex={-1} className="documents-page page-container">

@@ -68,6 +68,11 @@ en la cabecera `X-Request-ID`:
 
 ## 1. `POST /api/consulta` (HU01–HU05, HU10)
 
+`POST /api/v1/knowledge-question` es un alias de esta ruta: mismo acceso, validación,
+límites y contrato de Knowledge Desk (no el cuerpo de respuesta de ForUsGuide). En modo
+`directo`, `engine` vale `directo` y la recuperación y la redacción ocurren en Knowledge
+Desk contra el índice Pinecone compartido (solo lectura) y el proveedor configurado.
+
 ```http
 POST /api/consulta
 Content-Type: application/json
