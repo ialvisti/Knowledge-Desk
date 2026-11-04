@@ -38,6 +38,10 @@ export interface Fuente {
   affinity: number
   fragment_count: number
   fragments: FragmentoFuente[]
+  // "original": los bytes exactos de la versión citada de un documento de
+  // Knowledge Desk. "texto_indexado": TXT con los fragmentos indexados de un
+  // artículo del corpus base, que no tiene original disponible.
+  download?: { kind: 'original' | 'texto_indexado'; label: string; url: string; file_name: string } | null
 }
 
 export interface ContratoConsulta {

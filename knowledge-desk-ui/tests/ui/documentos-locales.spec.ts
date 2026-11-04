@@ -78,11 +78,11 @@ test.describe('HU07–HU09 · colección local con IndexedDB real', () => {
     await cargar(page)
     await expect(page.getByRole('main')).not.toContainText(/Indexado local/i)
     await expect(page.locator('.status-local')).toHaveCount(0)
-    const href = await fila(page, NOMBRE).getByRole('link', { name: NOMBRE }).getAttribute('href')
+    const href = await fila(page, NOMBRE).getByRole('link', { name: NOMBRE, exact: true }).getAttribute('href')
     expect(href).toMatch(/^\/documentos\/local\//)
     await page.reload()
     await expect(fila(page, NOMBRE)).toContainText('Indexado')
-    await fila(page, NOMBRE).getByRole('link', { name: NOMBRE }).click()
+    await fila(page, NOMBRE).getByRole('link', { name: NOMBRE, exact: true }).click()
     await expect(page.getByRole('main')).toContainText('120000 COP')
     const descargaPendiente = page.waitForEvent('download')
     await page.getByRole('link', { name: 'Descargar original', exact: true }).click()
@@ -94,10 +94,37 @@ test.describe('HU07–HU09 · colección local con IndexedDB real', () => {
     expect(peticiones).toEqual([])
   })
 
+  test('CP-HU08-09 y CP-HU07-13 · la tabla local ofrece Visualizar, Descargar, Editar y Eliminar; el original y los fragmentos persisten al recargar', async ({ page }) => {
+    const peticiones = await preparar(page)
+    await cargar(page)
+    const filaDoc = fila(page, NOMBRE)
+    const fragmentos = await filaDoc.locator('td[data-label="Fragmentos"]').textContent()
+    for (const accion of ['Visualizar', 'Descargar']) await expect(filaDoc.getByRole('link', { name: `${accion} ${NOMBRE}`, exact: true })).toBeVisible()
+    for (const accion of ['Editar', 'Eliminar']) await expect(filaDoc.getByRole('button', { name: `${accion} ${NOMBRE}`, exact: true })).toBeEnabled()
+
+    const descargar = async () => {
+      const pendiente = page.waitForEvent('download')
+      await fila(page, NOMBRE).getByRole('link', { name: `Descargar ${NOMBRE}`, exact: true }).click()
+      const descarga = await pendiente
+      expect(descarga.suggestedFilename()).toBe(NOMBRE)
+      return readFile((await descarga.path())!)
+    }
+    expect(await descargar()).toEqual(Buffer.from(V1, 'utf8'))
+
+    // Recargar el navegador: la colección sigue en IndexedDB con los mismos datos.
+    await page.reload()
+    await expect(fila(page, NOMBRE)).toContainText('Indexado')
+    await expect(fila(page, NOMBRE).locator('td[data-label="Fragmentos"]')).toHaveText(fragmentos!)
+    expect(await descargar()).toEqual(Buffer.from(V1, 'utf8'))
+    await fila(page, NOMBRE).getByRole('link', { name: `Visualizar ${NOMBRE}`, exact: true }).click()
+    await expect(page.getByText('Archivo guardado íntegro')).toBeVisible()
+    expect(peticiones).toEqual([])
+  })
+
   test('reemplazo total confirmado: conserva identidad y las consultas usan solo el contenido nuevo', async ({ page }) => {
     const peticiones = await preparar(page)
     await cargar(page)
-    const href = await fila(page, NOMBRE).getByRole('link', { name: NOMBRE }).getAttribute('href')
+    const href = await fila(page, NOMBRE).getByRole('link', { name: NOMBRE, exact: true }).getAttribute('href')
     await buscar(page)
     await expect(page.getByRole('main')).toContainText('120000 COP')
     await page.goto('/documentos')
@@ -105,7 +132,7 @@ test.describe('HU07–HU09 · colección local con IndexedDB real', () => {
     await modal.getByRole('button', { name: 'Reemplazar documento', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Documento reemplazado', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Volver a documentos', exact: true }).click()
-    await expect(fila(page, NUEVO).getByRole('link', { name: NUEVO })).toHaveAttribute('href', href!)
+    await expect(fila(page, NUEVO).getByRole('link', { name: NUEVO, exact: true })).toHaveAttribute('href', href!)
     await expect(fila(page, NOMBRE)).toHaveCount(0)
     await page.reload()
     await expect(fila(page, NUEVO)).toContainText('Indexado')
@@ -246,7 +273,7 @@ test.describe('HU07–HU09 · colección local con IndexedDB real', () => {
       await page.getByLabel('Seleccionar documentos locales').setInputFiles(path.join(RAIZ, 'demo', 'documentos-locales', nombre))
       await expect(fila(page, nombre)).toContainText('Indexado')
       await page.reload()
-      await fila(page, nombre).getByRole('link', { name: nombre }).click()
+      await fila(page, nombre).getByRole('link', { name: nombre, exact: true }).click()
       await expect(page.getByRole('main')).toContainText('120000')
     })
   }

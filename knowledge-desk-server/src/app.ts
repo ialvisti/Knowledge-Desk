@@ -9,7 +9,7 @@ import { crearMotorDirecto } from './consulta/directo.ts'
 import { crearMotorForUsGuide } from './consulta/forusguide.ts'
 import { crearMotorLocal } from './consulta/local.ts'
 import type { Motor } from './consulta/motor.ts'
-import { consultar } from './consulta/service.ts'
+import { consultar, nombreTextoIndexado } from './consulta/service.ts'
 import { MAX_PREGUNTA, MIN_PREGUNTA } from './consulta/validate.ts'
 import { GestorDocumentos, type ArchivoRecibido, type Log } from './documents/pipeline.ts'
 import { PATRON_DOCUMENTO, PATRON_VERSION, Registro, type Documento, type Version } from './documents/store.ts'
@@ -356,6 +356,30 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
     if (!servicios.motor?.articulo) throw new KdError('SOURCE_NOT_AVAILABLE', 'Este modo no tiene artículos externos que abrir.')
     const articulo = await servicios.motor.articulo(articleId, { requestId: request.id, signal: AbortSignal.timeout(30_000) })
     return { tipo: 'articulo_externo', origen: 'fragmentos_indexados', ...articulo }
+  })
+
+  // Texto indexado de un artículo del corpus base, como TXT. No es el archivo
+  // original (el corpus base no lo expone) y la primera línea lo declara. Los
+  // documentos de Knowledge Desk se descargan con su original exacto.
+  app.get<{ Params: { articleId: string } }>('/api/fuentes/:articleId/texto', async (request, reply) => {
+    const articleId = request.params.articleId
+    if (!ARTICULO.test(articleId) || esArticuloKd(articleId)) throw new KdError('SOURCE_NOT_AVAILABLE', 'Este texto solo existe para artículos del corpus base; los documentos cargados se descargan con su original.')
+    if (!servicios.motor?.articulo) throw new KdError('SOURCE_NOT_AVAILABLE', 'Este modo no tiene artículos externos que descargar.')
+    const articulo = await servicios.motor.articulo(articleId, { requestId: request.id, signal: AbortSignal.timeout(30_000) })
+    const texto = [
+      'Texto indexado de la fuente. No es el archivo original: el corpus base solo expone sus fragmentos indexados.',
+      `Artículo: ${articulo.titulo}`,
+      `ID: ${articulo.articleId}`,
+      `Fragmentos: ${articulo.fragmentos.length}`,
+      '',
+      ...articulo.fragmentos.map(fragmento => `--- Fragmento ${fragmento.indice ?? '?'} · ${fragmento.tipo} ---\n${fragmento.contenido}\n`),
+    ].join('\n')
+    const bytes = Buffer.from(texto, 'utf8')
+    reply.header('content-type', 'text/plain; charset=utf-8')
+    reply.header('content-disposition', `attachment; filename="${nombreTextoIndexado(articleId)}"`)
+    reply.header('x-content-sha256', createHash('sha256').update(bytes).digest('hex'))
+    reply.header('cache-control', 'no-store')
+    return reply.send(bytes)
   })
 
   // --- Documentos (HU07–HU09) -----------------------------------------------

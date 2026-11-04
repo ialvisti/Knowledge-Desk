@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { PUERTOS } from '../../playwright.config'
 
@@ -74,6 +76,54 @@ test('HU02–HU04: la consulta se responde con el artículo y la fuente abre su 
   await expect(page.getByRole('region', { name: 'JSON formateado' })).toContainText('"article_id": "e2e_viaticos_internacionales"')
   await page.getByRole('button', { name: 'Original exacto' }).click()
   expect(await page.getByRole('region', { name: 'JSON original exacto' }).textContent()).toBe(JSON.stringify(articulo('v1'), null, 2))
+})
+
+const ZAFIRO = 'Protocolo ficticio Zafiro de custodia de llaves\n\nReglas\nLa llave maestra Zafiro debe devolverse en recepción antes de las 18:00 del mismo día.\n'
+const ZAFIRO_NOMBRE = 'E2E_Zafiro.txt'
+
+async function descargaReal(page: Page, enlace: ReturnType<Page['getByRole']>) {
+  const pendiente = page.waitForEvent('download')
+  await enlace.click()
+  const descarga = await pendiente
+  return { nombre: descarga.suggestedFilename(), bytes: await readFile((await descarga.path())!) }
+}
+
+test('CP-HU07-13 y CP-HU08-09: un TXT cargado conserva original, fragmentos y descarga exacta al recargar Documentos', async ({ page }) => {
+  await cargar(page, { name: ZAFIRO_NOMBRE, mimeType: 'text/plain', buffer: Buffer.from(ZAFIRO, 'utf8') })
+  const filaDoc = fila(page, ZAFIRO_NOMBRE)
+  await expect(filaDoc.getByText('Indexado', { exact: true })).toBeVisible({ timeout: 30_000 })
+  const fragmentos = await filaDoc.locator('td[data-label="Fragmentos"]').textContent()
+  expect(Number(fragmentos)).toBeGreaterThan(0)
+  const antes = await descargaReal(page, filaDoc.getByRole('link', { name: `Descargar ${ZAFIRO_NOMBRE}` }))
+  expect(antes.nombre).toBe(ZAFIRO_NOMBRE)
+  expect(antes.bytes.equals(Buffer.from(ZAFIRO, 'utf8'))).toBe(true)
+
+  // Recarga del navegador: el servidor conserva el registro (mismo proceso y directorio).
+  await page.reload()
+  await expect(fila(page, ZAFIRO_NOMBRE).getByText('Indexado', { exact: true })).toBeVisible()
+  await expect(fila(page, ZAFIRO_NOMBRE).locator('td[data-label="Fragmentos"]')).toHaveText(fragmentos!)
+  const despues = await descargaReal(page, fila(page, ZAFIRO_NOMBRE).getByRole('link', { name: `Descargar ${ZAFIRO_NOMBRE}` }))
+  expect(createHash('sha256').update(despues.bytes).digest('hex')).toBe(createHash('sha256').update(ZAFIRO).digest('hex'))
+
+  await fila(page, ZAFIRO_NOMBRE).getByRole('link', { name: `Visualizar ${ZAFIRO_NOMBRE}` }).click()
+  await expect(page.getByRole('region', { name: 'Texto extraído de la versión v1.0' })).toContainText(createHash('sha256').update(ZAFIRO).digest('hex'))
+  await expect(page.locator('.doc-fragment')).toHaveCount(Number(fragmentos))
+  const detalle = await descargaReal(page, page.getByRole('group', { name: 'Acciones del documento' }).getByRole('link', { name: 'Descargar original' }))
+  expect(detalle.bytes.equals(Buffer.from(ZAFIRO, 'utf8'))).toBe(true)
+})
+
+test('CP-HU07-08 y CP-HU04-06: la consulta principal usa el contenido exclusivo del TXT cargado y su fuente descarga el original exacto', async ({ page }) => {
+  await page.goto(`/resultados?${new URLSearchParams({ q: '¿Cuándo se devuelve la llave maestra Zafiro?' })}`)
+  await expect(page.getByRole('region', { name: 'Respuesta' })).toBeVisible({ timeout: 30_000 })
+  const tarjeta = page.locator('.source-card').filter({ hasText: 'Protocolo ficticio Zafiro de custodia de llaves' })
+  await expect(tarjeta).toBeVisible()
+  await expect(tarjeta).toContainText('Documento')
+  const descarga = await descargaReal(page, tarjeta.getByRole('link', { name: /^Descargar original: / }))
+  expect(descarga.nombre).toBe(ZAFIRO_NOMBRE)
+  expect(descarga.bytes.equals(Buffer.from(ZAFIRO, 'utf8'))).toBe(true)
+  await tarjeta.locator('.source-title-link').click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Protocolo ficticio Zafiro de custodia de llaves' })).toBeVisible()
+  await expect(page.locator('.doc-fragment-used')).not.toHaveCount(0)
 })
 
 test('HU08: reemplazar por otra versión del mismo artículo la activa y las respuestas usan solo la nueva', async ({ page }) => {

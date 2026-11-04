@@ -24,6 +24,11 @@ export interface Fuente {
   affinity: number
   fragment_count: number
   fragments: { id: string; affinity: number; type: string; paths: string[]; operational: boolean; content: string }[]
+  // Descarga de la fuente (HU04). "original": los bytes exactos de la versión
+  // citada de un documento de Knowledge Desk. "texto_indexado": de un artículo
+  // del corpus base solo hay fragmentos indexados; se exportan como TXT y se
+  // declara así, nunca como el original. null si el modo no puede ofrecerla.
+  download: { kind: 'original' | 'texto_indexado'; label: string; url: string; file_name: string } | null
 }
 
 export interface DepsConsulta {
@@ -71,7 +76,10 @@ export function resumirRutas(rutas: string[]): string | null {
 
 // Cada fuente sale de fragmentos que entraron en el contexto y superan el
 // umbral de relevancia (HU04). No se listan artículos recuperados y descartados.
-export async function construirFuentes(relevantes: Evidencia[], registro: Registro): Promise<Fuente[]> {
+// Nombre de archivo para el TXT de texto indexado: solo caracteres seguros.
+export const nombreTextoIndexado = (articleId: string) => `${articleId.replace(/[^A-Za-z0-9_.-]/g, '_')}-texto-indexado.txt`
+
+export async function construirFuentes(relevantes: Evidencia[], registro: Registro, opciones: { textoExterno?: boolean } = {}): Promise<Fuente[]> {
   const grupos = new Map<string, Evidencia[]>()
   for (const item of relevantes) grupos.set(item.articleId, [...(grupos.get(item.articleId) ?? []), item])
   const fuentes: Fuente[] = []
@@ -101,6 +109,11 @@ export async function construirFuentes(relevantes: Evidencia[], registro: Regist
       affinity: redondear(items[0].score),
       fragment_count: items.length,
       fragments,
+      download: ubicado
+        ? { kind: 'original', label: 'Descargar original', url: `/api/documentos/${ubicado.documento.id}/archivo?version=${ubicado.version.version}&descargar=1`, file_name: ubicado.version.archivo.nombre }
+        : opciones.textoExterno && !esArticuloKd(articleId)
+          ? { kind: 'texto_indexado', label: 'Descargar texto de la fuente', url: `/api/fuentes/${encodeURIComponent(articleId)}/texto`, file_name: nombreTextoIndexado(articleId) }
+          : null,
     })
   }
   return fuentes.sort((a, b) => b.affinity - a.affinity)
@@ -145,7 +158,7 @@ export async function consultar(deps: DepsConsulta, cuerpo: unknown, requestId: 
   }
 
   const relevantes = evidencia.filter(item => item.score >= deps.umbrales.minScore)
-  const fuentes = await construirFuentes(relevantes, deps.registro)
+  const fuentes = await construirFuentes(relevantes, deps.registro, { textoExterno: typeof deps.motor.articulo === 'function' })
 
   // Comprobación final, después del ÚLTIMO await: un documento retirado o
   // reemplazado mientras se preparaba la respuesta no puede salir como fuente.

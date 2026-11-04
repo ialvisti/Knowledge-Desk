@@ -1,3 +1,4 @@
+import type { MouseEvent } from 'react'
 import type { DocumentoLocal, TipoLocal } from '../local/documentos'
 import { fechaTexto, plural, tamano } from './formato'
 
@@ -16,4 +17,12 @@ export function tipoDe(nombre: string): TipoLocal | null {
 
 export function describirLocal(documento: DocumentoLocal): string {
   return `${ETIQUETA_TIPO[documento.tipo]} · v${documento.version} · ${tamano(documento.bytes)} · cargado el ${fechaTexto(documento.fechaCarga)} · ${plural(documento.fragmentos.length, 'fragmento', 'fragmentos')}`
+}
+
+// Los bytes guardados en IndexedDB, con su nombre real. La URL del Blob se crea
+// al pulsar y se revoca después para no retener el archivo en memoria.
+export function descargarBlob(event: MouseEvent<HTMLAnchorElement>, archivo: Blob) {
+  const url = URL.createObjectURL(archivo)
+  event.currentTarget.href = url
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }

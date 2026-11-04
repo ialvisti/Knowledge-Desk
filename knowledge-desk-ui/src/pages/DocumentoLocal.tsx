@@ -5,7 +5,7 @@ import { Icon, Spinner } from '../components/ui'
 import { VisorJson } from '../components/VisorJson'
 import { listarRegistrosLocales, mensajeErrorLocal, obtenerLocal, suscribirLocales, type DocumentoLocal, type RegistroLocal } from '../local/documentos'
 import { fechaHora, fechaTexto, plural, tamano } from '../lib/formato'
-import { ETIQUETA_TIPO, RUTA_COLECCION_LOCAL } from '../lib/locales'
+import { ETIQUETA_TIPO, RUTA_COLECCION_LOCAL, descargarBlob } from '../lib/locales'
 
 const EXTRACCION: Record<DocumentoLocal['tipo'], string> = {
   pdf: 'Texto de las páginas del PDF. Sin OCR: las páginas escaneadas como imagen no aportan texto.',
@@ -111,11 +111,7 @@ export function VisorDocumentoLocal() {
     <div className="doc-view-actions">
       {/* Los bytes guardados, con su nombre real. La URL del Blob se crea al
           pulsar y se revoca después para no retener el archivo en memoria. */}
-      <a className="button button-secondary" href="#descargar-original" download={documento.nombre} onClick={event => {
-        const url = URL.createObjectURL(documento.archivo)
-        event.currentTarget.href = url
-        setTimeout(() => URL.revokeObjectURL(url), 60_000)
-      }}><Icon name="download" />Descargar original</a>
+      <a className="button button-secondary" href="#descargar-original" download={documento.nombre} onClick={event => descargarBlob(event, documento.archivo)}><Icon name="download" />Descargar original</a>
     </div>
 
     {esJson && <section className="doc-json" aria-labelledby="json-local">

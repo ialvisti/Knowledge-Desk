@@ -49,7 +49,7 @@ en la cabecera `X-Request-ID`:
 | `UPSTREAM_BLOCKED` | 502 | La plataforma que publica ForUsGuide respondió con una página de verificación (`cf-mitigated: challenge`, con cualquier estado). No es reintentable: hace falta que intervenga quien opera esa plataforma, con el ID de soporte. |
 | `INTEGRATION_NOT_CONFIGURED` | 503 | El servidor arrancó sin `KD_MODO` o sin la integración necesaria. Nunca inventa una respuesta. |
 | `CONTENT_UNAVAILABLE` | 409 | La evidencia incluye una versión no servible (procesando, bloqueada, reemplazada o retirada). Se comprueba después del último `await`. |
-| `UNSUPPORTED_FORMAT` | 415 | El archivo no es `.json`. |
+| `UNSUPPORTED_FORMAT` | 415 | El archivo no es un artículo JSON kb_article_v2, PDF con texto, DOCX o TXT admitido, o su contenido corresponde a un formato no aprobado. |
 | `EMPTY_FILE` | 400 | Archivo vacío o solo espacios. |
 | `FILE_TOO_LARGE` | 413 | Supera `KD_MAX_ARTICULO_MB` (por defecto 50 MB). |
 | `INVALID_ARTICLE` | 422 | No es UTF-8, no es JSON o no cumple kb_article_v2. `details.ruta` indica la ruta exacta (por ejemplo `details.steps[2].description`). |
@@ -114,7 +114,12 @@ Respuesta 200 (con el texto recortado):
     "location": "details.business_rules[0]",           // rutas JSON resumidas
     "affinity": 0.45, "fragment_count": 4,
     "fragments": [{ "id": "kd_doc0006_v1_0_chunk_1", "affinity": 0.45, "type": "eligibility",
-                    "paths": ["details.business_rules[0]"], "operational": false, "content": "…" }]
+                    "paths": ["details.business_rules[0]"], "operational": false, "content": "…" }],
+    "download": {
+      "kind": "original", "label": "Descargar original",
+      "url": "/api/documentos/DOC-0006/archivo?version=1.0&descargar=1",
+      "file_name": "Politica_Viaticos_v3.2.json"
+    }
   }],
   "found_documents": [],                 // con insufficient: lo encontrado, sin presentarlo como sustento
   "contradictions": [],                  // [{ description, source_ids }] para revisión humana
@@ -127,6 +132,12 @@ Respuesta 200 (con el texto recortado):
 
 Reglas que el servidor garantiza:
 
+- **Descarga de fuentes.** `sources[].download` enlaza el original exacto de la
+  versión citada de un documento cargado, con su nombre y formato. Si la fuente es
+  un artículo del corpus base sin original disponible, el modo directo ofrece
+  `kind: "texto_indexado"`, con la etiqueta "Descargar texto de la fuente": un TXT
+  que identifica el artículo y sus fragmentos. No se presenta como el original.
+  Si el modo no permite descargar la fuente, `download` es `null`.
 - **Fuentes.** Solo artículos con fragmentos usados en el contexto y una afinidad igual o
   superior a `KD_COBERTURA_MIN` (0,20). Los recuperados y descartados no aparecen. El
   mismo texto de un artículo cuenta una sola vez: el chunker repite las reglas de
@@ -214,9 +225,10 @@ Los artículos JSON siguen el formato de los artículos de ForUsGuide:
 | `POST /api/documentos/:id/reintento` | Reprocesa un documento en Error que aún no tiene versión activa. |
 | `POST /api/documentos/:id/eliminacion` `{"confirmado": true}` | Retira fragmentos, embeddings y registro. Los contadores son **medidos**: si queda algo, es `fallido_parcial`, el documento queda bloqueado y se puede reintentar. |
 | `GET /api/documentos/:id?version=x` | Detalle: identidad del artículo, SHA-256, fragmentos con tipo, nivel, rutas y parte, versiones y operaciones. |
-| `GET /api/documentos/:id/archivo?version=x[&descargar=1]` | El JSON original exacto (`application/json; charset=utf-8`). |
+| `GET /api/documentos/:id/archivo?version=x[&descargar=1]` | Bytes exactos del original JSON, PDF, DOCX o TXT de esa versión, con su tipo MIME y `X-Content-SHA256`. `descargar=1` entrega un adjunto con el nombre del archivo. |
 | `GET /api/operaciones/:id` | Registro técnico: pasos, operador, fechas, resultado y contadores. |
 | `GET /api/fuentes/:articleId` | Si el artículo es de Knowledge Desk, redirige a su documento. Si es de ForUsGuide, devuelve **sus fragmentos indexados** (`origen: "fragmentos_indexados"`), porque ForUsGuide no expone el JSON original. |
+| `GET /api/fuentes/:articleId/texto` | Exporta los fragmentos de un artículo del corpus base como TXT en UTF-8, con nombre seguro y SHA-256. La primera línea declara que es texto indexado, no el archivo original. No admite IDs de documentos de Knowledge Desk ni mezcla fragmentos de otros artículos. |
 
 ## 3. ForUsGuide como servicio externo (modo `forusguide`)
 

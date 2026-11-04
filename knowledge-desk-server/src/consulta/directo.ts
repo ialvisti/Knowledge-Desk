@@ -102,6 +102,8 @@ export function crearMotorDirecto(deps: { proveedor: Proveedor; buscador: Buscad
       } catch (error) {
         throw errorBusqueda(error, signal)
       }
+      // Solo fragmentos de ESTE artículo, aunque el filtro del índice fallara.
+      hits = hits.filter(hit => hit.metadata.article_id === articleId)
       if (!hits.length) throw new KdError('SOURCE_NOT_AVAILABLE')
       const indice = (hit: Coincidencia) => (typeof hit.metadata.chunk_index === 'number' ? hit.metadata.chunk_index : null)
       const fragmentos = hits

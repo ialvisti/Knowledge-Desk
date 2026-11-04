@@ -30,6 +30,9 @@ button.text-link { background: none; border: 0; padding: 0; }
 .source-title-link:hover { color: var(--color-primary); text-decoration: underline; text-underline-offset: 3px; }
 .source-meta .source-arrow { margin-left: auto; display: inline-flex; padding: 4px; border-radius: 4px; color: var(--color-muted); }
 .source-meta .source-arrow:hover { background: #efeeea; color: var(--color-primary); }
+.source-meta .source-download { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 4px; color: var(--color-primary); font-weight: 600; }
+.source-meta .source-download:hover { background: #efeeea; }
+.source-meta .source-download + .source-arrow { margin-left: 0; }
 .contradictions { margin-top: 32px; padding: 20px 24px; background: #fff8e6; border: 1px solid #f1d58a; border-radius: 4px; color: #5b4300; }
 .contradictions h2 { display: flex; align-items: center; gap: 8px; font: 600 16px/24px var(--font-sans); margin-bottom: 6px; }
 .contradictions ul { margin-top: 10px; padding-left: 20px; list-style: disc; font-size: 14px; line-height: 22px; }

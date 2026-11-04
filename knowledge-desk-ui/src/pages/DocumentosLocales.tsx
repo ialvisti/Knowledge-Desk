@@ -5,7 +5,7 @@ import { Button, Icon, Spinner } from '../components/ui'
 import { useAlmacenamiento, useColeccionLocal } from '../hooks/useColeccionLocal'
 import { guardarLocal, mensajeErrorLocal, validarArchivoLocal, type DocumentoLocal } from '../local/documentos'
 import { fechaCorta, normalizar, plural, tamano } from '../lib/formato'
-import { ACEPTA_LOCAL, ETIQUETA_TIPO, ICONO_TIPO, rutaDocumentoLocal } from '../lib/locales'
+import { ACEPTA_LOCAL, ETIQUETA_TIPO, ICONO_TIPO, descargarBlob, rutaDocumentoLocal } from '../lib/locales'
 import { useServidor } from '../state/servidor'
 
 interface Aviso { clave: number; tipo: 'ok' | 'error'; texto: string }
@@ -131,6 +131,8 @@ export function DocumentosLocales() {
                   <span className="status-note">{ETIQUETA_TIPO[doc.tipo]} · v{doc.version}</span>
                 </div></td>
                 <td data-label="Acciones"><div className="row-actions">
+                  <Link to={rutaDocumentoLocal(doc.id)} className="action-button" aria-label={`Visualizar ${doc.nombre}`} title="Ver el documento guardado en este navegador"><Icon name="visibility" filled /></Link>
+                  <a href="#descargar-original" download={doc.nombre} className="action-button" aria-label={`Descargar ${doc.nombre}`} title="Descargar el archivo original guardado en este navegador" onClick={event => descargarBlob(event, doc.archivo)}><Icon name="download" filled /></a>
                   <button type="button" className="action-button" aria-label={`Editar ${doc.nombre}`} title="Reemplazar por una nueva versión" onClick={() => setReemplazo(doc)}><Icon name="edit" filled /></button>
                   <button type="button" className="action-button" aria-label={`Eliminar ${doc.nombre}`} title="Eliminar" onClick={() => setEliminacion(doc)}><Icon name="delete" filled /></button>
                 </div></td>

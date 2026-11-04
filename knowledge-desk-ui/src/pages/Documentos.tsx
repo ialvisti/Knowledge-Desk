@@ -184,6 +184,11 @@ function DocumentosServidor() {
                   </div>}
                 </td>
                 <td data-label="Acciones"><div className="row-actions">
+                  <Link to={`/documentos/${doc.id}`} className="action-button" aria-label={`Visualizar ${doc.nombre}`} title="Ver el documento, su texto y sus fragmentos"><Icon name="visibility" filled /></Link>
+                  {/* El original de la versión vigente, como adjunto con su nombre. */}
+                  {doc.versionActiva
+                    ? <a href={`/api/documentos/${doc.id}/archivo?version=${doc.versionActiva}&descargar=1`} download={doc.nombre} className="action-button" aria-label={`Descargar ${doc.nombre}`} title="Descargar el archivo original de la versión vigente"><Icon name="download" filled /></a>
+                    : <button type="button" className="action-button" aria-label={`Descargar ${doc.nombre}`} title="No hay una versión vigente que descargar" disabled><Icon name="download" filled /></button>}
                   <button type="button" className="action-button" aria-label={`Editar ${doc.nombre}`} title={motivoBloqueo ?? (ocupado ? 'Hay una operación en curso' : 'Reemplazar por una nueva versión del artículo')} disabled={!cargaDisponible || ocupado || doc.estado === 'bloqueado'} onClick={() => setReemplazo(doc)}><Icon name="edit" filled /></button>
                   <button type="button" className="action-button" aria-label={`${doc.estado === 'bloqueado' ? 'Reintentar la eliminación de' : 'Eliminar'} ${doc.nombre}`} title={!puede ? 'Tu acceso es solo de consulta.' : ocupado ? 'Hay una operación en curso' : 'Eliminar'} disabled={!puede || ocupado} onClick={() => setEliminacion(doc)}><Icon name="delete" filled /></button>
                 </div></td>

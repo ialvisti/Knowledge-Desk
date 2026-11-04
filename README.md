@@ -138,6 +138,14 @@ business_rules, overview; reglas en `knowledge-desk-server/src/documents/texto.t
 conservan el original byte a byte con su SHA-256, el texto extraído
 (`GET /api/documentos/:id/texto`) y los fragmentos con los bloques de origen. Una imagen
 u otro formato se rechaza con `UNSUPPORTED_FORMAT` antes de guardar nada.
+
+La tabla ofrece Visualizar, Descargar, Editar y Eliminar. Desde el detalle se puede
+descargar el original de la versión abierta. Las tarjetas de fuentes también
+permiten descargar el original de la versión citada; en modo directo, los artículos
+del corpus base sin original disponible ofrecen un TXT identificado como texto
+indexado de la fuente. Los originales se conservan byte a byte, con nombre, formato
+y SHA-256 verificables.
+
    - `KD_MODO=local`: rellena `KD_LLM_BASE_URL` (por ejemplo `https://api.openai.com/v1`
      o un Ollama local), `KD_LLM_API_KEY`, `KD_EMBEDDINGS_MODEL` y `KD_CHAT_MODEL`.
 3. Arranca:

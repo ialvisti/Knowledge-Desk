@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError, leerOriginal, type Original } from '../api/cliente'
 import { detalleDocumento, obtenerOperacion } from '../api/servicios'
 import type { DetalleDocumento, Operacion } from '../api/tipos'
-import { DialogoRegistro, IconoArchivo } from '../components/documentos'
+import { DialogoEliminacion, DialogoRegistro, DialogoReemplazo, IconoArchivo } from '../components/documentos'
 import { Icon, Spinner, StatusBadge } from '../components/ui'
 import { VisorJson } from '../components/VisorJson'
 import { fechaHora, fechaTexto, plural, tamano } from '../lib/formato'
 import { anclaRuta } from '../lib/rutas'
+import { useServidor } from '../state/servidor'
 
 const RESULTADO: Record<string, string> = { en_curso: 'En curso', exitoso: 'Exitoso', fallido: 'Fallido', fallido_parcial: 'Fallido - parcial' }
 const TIPO: Record<string, string> = { carga: 'Carga', reemplazo: 'Reemplazo', reintento: 'Reintento', eliminacion: 'Eliminación' }
@@ -33,6 +34,10 @@ export function DocumentoCompleto() {
   const [original, setOriginal] = useState<{ pedido: string; datos: Original } | null>(null)
   const [fallos, setFallos] = useState<{ pedido: string; documento?: string; original?: string } | null>(null)
   const [registro, setRegistro] = useState<Operacion | null>(null)
+  const [dialogo, setDialogo] = useState<'reemplazo' | 'eliminacion' | null>(null)
+  const [recarga, setRecarga] = useState(0)
+  const navigate = useNavigate()
+  const { estado: servidor, revalidar } = useServidor()
 
   useEffect(() => {
     const controlador = new AbortController()
@@ -50,7 +55,7 @@ export function DocumentoCompleto() {
       if (!controlador.signal.aborted) setFallos({ pedido, documento: mensaje(fallo, 'No se pudo abrir el documento.') })
     })
     return () => controlador.abort()
-  }, [id, versionPedida, pedido])
+  }, [id, versionPedida, pedido, recarga])
 
   const detalle = cargado?.pedido === pedido ? cargado.detalle : null
   const leido = original?.pedido === pedido ? original.datos : null
@@ -80,6 +85,12 @@ export function DocumentoCompleto() {
   const articulo = version.articulo
   const vigente = version.estado === 'activa' && documento.estado === 'indexado'
   const esJson = version.tipo === 'json'
+  // Acciones sobre el documento abierto (HU08): editar y eliminar como en la
+  // tabla; descargar el original de la versión que se está viendo.
+  const puede = servidor?.puedeAdministrar ?? false
+  const ocupado = documento.operacionEnCurso !== null || documento.estado === 'procesando' || documento.estado === 'eliminando'
+  const retirado = documento.estado === 'retirado'
+  const alCambiar = () => { void revalidar(); setRecarga(valor => valor + 1) }
 
   return <main id="contenido" tabIndex={-1} className="page-container doc-view">
     <div className="results-toolbar">
@@ -87,6 +98,15 @@ export function DocumentoCompleto() {
     </div>
     <p className="eyebrow">{esJson ? 'Artículo de conocimiento · JSON kb_article_v2' : `Documento ${version.tipo.toUpperCase()} · texto extraído en el servidor`}</p>
     <h1 className="doc-view-title"><IconoArchivo grande tipo={version.tipo} />{articulo.titulo}</h1>
+    <div className="doc-view-actions" role="group" aria-label="Acciones del documento">
+      {version.archivoUrl
+        ? <a className="button button-secondary" href={`${version.archivoUrl}&descargar=1`} download={version.nombre}><Icon name="download" />Descargar original</a>
+        : <button type="button" className="button button-secondary" disabled title="El archivo original ya no está disponible"><Icon name="download" />Descargar original</button>}
+      <button type="button" className="button button-secondary" disabled={!puede || ocupado || retirado || !servidor?.indexacion.configurada || documento.estado === 'bloqueado'}
+        title={!puede ? 'Tu acceso es solo de consulta.' : ocupado ? 'Hay una operación en curso' : 'Reemplazar por una nueva versión'} onClick={() => setDialogo('reemplazo')}><Icon name="edit" />Editar</button>
+      <button type="button" className="button button-secondary" disabled={!puede || ocupado || retirado}
+        title={!puede ? 'Tu acceso es solo de consulta.' : ocupado ? 'Hay una operación en curso' : 'Eliminar el documento'} onClick={() => setDialogo('eliminacion')}><Icon name="delete" />Eliminar</button>
+    </div>
     <p className="doc-view-meta">
       <span className="doc-view-file">{version.nombre}</span> · {documento.id} · v{version.version} · <code>{articulo.id}</code> · cargado el {fechaTexto(version.cargadoEn)} · {plural(version.fragmentos, 'fragmento', 'fragmentos')} · {tamano(version.bytes)} · <StatusBadge status={documento.estado} />
     </p>
@@ -163,5 +183,7 @@ export function DocumentoCompleto() {
       </table>
     </section>
     {registro && <DialogoRegistro operacion={registro} onClose={() => setRegistro(null)} />}
+    {dialogo === 'reemplazo' && <DialogoReemplazo documento={documento} maxBytes={servidor?.limites.archivoMaxBytes} formatos={servidor?.limites.formatos} onClose={() => setDialogo(null)} onCambio={alCambiar} />}
+    {dialogo === 'eliminacion' && <DialogoEliminacion documento={documento} onClose={() => setDialogo(null)} onCambio={() => { void revalidar(); navigate('/documentos') }} />}
   </main>
 }

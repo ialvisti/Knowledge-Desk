@@ -78,13 +78,17 @@ test.describe('HU07–HU09 · Documentos administra artículos JSON', () => {
     await expect(page.locator('tbody tr')).toHaveCount(3)
   })
 
-  test('cada fila abre el JSON desde el nombre y tiene solo las acciones Editar y Eliminar', async ({ page }) => {
+  test('cada fila abre el JSON desde el nombre y ofrece Visualizar, Descargar, Editar y Eliminar', async ({ page }) => {
     await simularServidor(page, { documentos: DOCUMENTOS })
     await page.goto('/documentos')
     const filas = page.locator('tbody tr')
     await expect(filas).toHaveCount(3)
-    await expect(filas.first().getByRole('link', { name: 'Política_Privacidad_2023.json' })).toHaveAttribute('href', '/documentos/DOC-0001')
-    for (const fila of await filas.all()) await expect(fila.locator('.row-actions > *')).toHaveCount(2)
+    await expect(filas.first().getByRole('link', { name: 'Política_Privacidad_2023.json', exact: true })).toHaveAttribute('href', '/documentos/DOC-0001')
+    for (const fila of await filas.all()) await expect(fila.locator('.row-actions > *')).toHaveCount(4)
+    await expect(filas.first().getByRole('link', { name: 'Visualizar Política_Privacidad_2023.json', exact: true })).toHaveAttribute('href', '/documentos/DOC-0001')
+    const descarga = filas.first().getByRole('link', { name: 'Descargar Política_Privacidad_2023.json', exact: true })
+    await expect(descarga).toHaveAttribute('href', '/api/documentos/DOC-0001/archivo?version=1.0&descargar=1')
+    await expect(descarga).toHaveAttribute('download', 'Política_Privacidad_2023.json')
     await expect(page.getByRole('button', { name: 'Editar Política_Privacidad_2023.json' })).toBeEnabled()
     await expect(page.getByRole('button', { name: 'Eliminar Manual_Operaciones_V2.json' })).toBeDisabled()
     await page.getByRole('button', { name: 'Ver motivo del error' }).click()

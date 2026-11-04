@@ -182,6 +182,11 @@ export function TarjetaFuente({ fuente, usada }: { fuente: Fuente; usada: boolea
       <span><Icon name="insights" />Afinidad {afinidad(fuente.affinity)}</span>
       <span><Icon name="find_in_page" />{plural(fuente.fragment_count, 'fragmento', 'fragmentos')}</span>
       {fuente.location && <span title={fuente.file_name ?? undefined}><Icon name="data_object" /><code className="source-path">{fuente.location}</code></span>}
+      {fuente.download && <a className="source-download" href={fuente.download.url} download={fuente.download.file_name}
+        aria-label={`${fuente.download.label}: ${fuente.title}`}
+        title={fuente.download.kind === 'original' ? `Descarga el archivo original de la versión citada (${fuente.download.file_name})` : 'Descarga como TXT el texto indexado de la fuente; no es el archivo original'}>
+        <Icon name="download" />{fuente.download.label}
+      </a>}
       <Link to={fuente.href} state={estado} className="source-arrow" aria-label={`Abrir el documento completo: ${fuente.title}`}><Icon name="arrow_outward" /></Link>
     </div>
   </article>
