@@ -139,7 +139,11 @@ Reglas que el servidor garantiza:
   motor y el de la política, de modo que la evidencia y los vacíos pueden bajarlo pero
   nunca subirlo. Si no hay nivel del motor, se usa el de la política (ver
   `knowledge-desk-server/src/consulta/coverage.ts`). Solo `alta` y `parcial` son
-  suficientes.
+  suficientes. En los modos directo y local, los vacíos los declara el modelo según
+  `PROMPT_SISTEMA`: evalúa cada objetivo pedido por separado y no cuenta como vacío
+  un detalle, un tema secundario ni un dato personal que la pregunta no necesita.
+  Un `baja` con vacíos declarados lo dice en `explanation` (ver
+  `docs/verificacion/COBERTURA_DIRECTO_2026-11-04.md`).
 - **Con cobertura insuficiente** no se presenta texto generado: `answer` es null y
   `key_points` y `sources` vienen vacíos.
 - **Modo local.** Una cita a una sección inexistente, una afirmación sin cita o un punto

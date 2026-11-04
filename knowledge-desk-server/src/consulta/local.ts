@@ -9,15 +9,27 @@ import { ProveedorError, type Proveedor } from '../providers/openaiCompatible.ts
 const PRESUPUESTO_CARACTERES = 8000
 const MAX_POR_DOCUMENTO = 6
 
+// La política kd-cobertura-v1 cuenta cada vacío como una parte de la pregunta
+// que el corpus no cubre (con 2 o más, cobertura baja). La regla 6 define el
+// vacío como en el prompt knowledge-question de ForUsGuide
+// (SYSTEM_PROMPT_KNOWLEDGE_QUESTION, reglas 2, 8 y 9): cada objetivo pedido se
+// evalúa por separado y lo que falta se declara, pero no los detalles, temas
+// vecinos o datos personales que la pregunta no necesita. Sin ella, el modelo
+// declaraba esos como vacíos y bloqueaba respuestas sustentadas. La regla 2
+// pide la cita en cada oración y viñeta porque así las valida
+// unidadesAfirmativas: una frase introductoria sin cita invalida la respuesta.
 export const PROMPT_SISTEMA = `Eres Knowledge Desk, un asistente interno. Respondes solo con la información de las SECCIONES numeradas, que provienen de los documentos aprobados del corpus.
 Reglas:
 1. No uses conocimiento general ni información externa. Si las secciones no bastan para responder, deja "respuesta" vacía y explica qué falta en "vacios_de_cobertura".
-2. Cada afirmación de la respuesta lleva la cita de la sección que la sustenta, con el formato [n].
+2. Cada oración y cada viñeta de la respuesta, también las introductorias o las que dicen de qué depende la respuesta, lleva la cita de la sección que la sustenta, con el formato [n]. Si una oración no se apoya en ninguna sección, no la escribas.
 3. Si dos secciones se contradicen, no elijas una en silencio: descríbelo en "contradicciones" citando ambas.
 4. No incluyas datos personales, financieros ni transaccionales de personas concretas.
 5. Escribe en el idioma de la pregunta.
+6. Para "vacios_de_cobertura", evalúa por separado cada objetivo central que pide la pregunta y lista cada uno que las secciones no permiten responder: tratar el tema general no cubre por sí solo los demás objetivos pedidos. Si la pregunta pide expresamente un plazo, un formulario, un requisito o una excepción y las secciones no lo dan, decláralo como vacío; si la pregunta no lo pide, que falte no es un vacío. No declares vacíos por detalles (por ejemplo, el paso a paso de cada variante cuando la pregunta es general), temas secundarios o datos personales que la pregunta no necesita.
+7. Si para aplicar una regla documentada faltan datos de quien pregunta (por ejemplo, su edad, su situación laboral o lo que habilita su plan), no los inventes ni confirmes su elegibilidad: explica la condición y qué dato hace falta, con su cita. Esa falta de datos personales no es un vacío de cobertura: la regla sí está documentada.
+8. Devuelve "vacios_de_cobertura" vacío solo cuando ningún objetivo central pedido queda sin respaldo en las secciones.
 Devuelve solo un objeto JSON con esta forma:
-{"respuesta": "texto con citas [n]", "puntos_clave": [{"texto": "...", "fuentes": [n]}], "vacios_de_cobertura": ["tema no cubierto"], "contradicciones": [{"descripcion": "...", "fuentes": [n, m]}]}`
+{"respuesta": "texto con citas [n]", "puntos_clave": [{"texto": "...", "fuentes": [n]}], "vacios_de_cobertura": ["objetivo pedido que las secciones no permiten responder"], "contradicciones": [{"descripcion": "...", "fuentes": [n, m]}]}`
 
 export function errorProveedor(error: unknown, codigo: ErrorCode, signal: AbortSignal): KdError {
   if (signal.aborted || (error instanceof ProveedorError && error.tipo === 'timeout')) return new KdError('TIMEOUT', undefined, { origen: 'proveedor' })

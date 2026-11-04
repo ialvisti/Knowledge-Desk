@@ -6,11 +6,16 @@ import { after, before, beforeEach, describe, it } from 'node:test'
 import type { FastifyInstance } from 'fastify'
 import { construirApp, construirServicios, type Servicios } from '../src/app.ts'
 import { capacidades, ConfigError, loadConfig } from '../src/config.ts'
+import { crearMotorDirecto } from '../src/consulta/directo.ts'
+import { PROMPT_SISTEMA } from '../src/consulta/local.ts'
+import { consultar } from '../src/consulta/service.ts'
+import { Registro } from '../src/documents/store.ts'
 import { crearIndicePinecone } from '../src/index/pinecone.ts'
-import { IndiceError } from '../src/index/types.ts'
+import { IndiceError, type BuscadorCorpus } from '../src/index/types.ts'
+import { crearProveedor } from '../src/providers/openaiCompatible.ts'
 import { articuloSimple, json } from './support/articulos.ts'
 import { multipart } from './support/entorno.ts'
-import { crearLlmSimulado } from './support/llm-simulado.ts'
+import { crearLlmSimulado, redacciones } from './support/llm-simulado.ts'
 import { iniciarPineconeSimulado, type PineconeSimulado } from './support/pinecone-simulado.ts'
 
 // Modo directo: el pipeline knowledge-question sin ForUsGuide. Pinecone se
@@ -301,5 +306,93 @@ describe('Modo directo · configuración', () => {
     const local = loadConfig({ KD_MODO: 'local', KD_LLM_BASE_URL: 'http://127.0.0.1:1/v1', KD_CHAT_MODEL: 'm', KD_EMBEDDINGS_MODEL: 'e' })
     assert.equal(local.proveedor?.temperatura, 0)
     assert.throws(() => loadConfig({ KD_MODO: 'otro' }), /forusguide, local o directo/)
+  })
+})
+
+// Consulta "¿Cómo hago un retiro de mi 401(k)?" (2026-11-04): con evidencia fuerte,
+// el modelo declaraba como vacíos detalles, temas vecinos o datos de quien pregunta,
+// y la política (2+ vacíos → baja) bloqueaba la respuesta. La corrección está en
+// PROMPT_SISTEMA y solo una evaluación con el modelo real la valida; está registrada en
+// docs/verificacion/COBERTURA_DIRECTO_2026-11-04.md. Estas pruebas fijan el CONTRATO
+// con salidas ya observadas: fragmentos sintéticos de afinidad 0,60, y "respuesta" y
+// "vacios_de_cobertura" copiados exactamente de las salidas v5 de gpt-5.5 de los casos
+// s1, s2 y s3 del JSON de evidencia, que no registró los puntos clave. No demuestran
+// cómo se comporta el modelo.
+describe('Modo directo · contrato con vacíos declarados por el modelo', () => {
+  const PORTAL: [string, string][] = [
+    ['steps', 'La solicitud de retiro se inicia desde el portal.'],
+    ['steps', 'En el portal, abre Retiros y selecciona Iniciar solicitud.'],
+  ]
+  const umbrales = loadConfig({}).cobertura
+  let dir: string
+  let registro: Registro
+  before(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'kd-directo-vacios-'))
+    registro = new Registro(dir)
+    await registro.cargar()
+  })
+  after(async () => { await rm(dir, { recursive: true, force: true }) })
+
+  async function preguntar(pregunta: string, fragmentos: [string, string][], redaccion: unknown) {
+    const llm = crearLlmSimulado()
+    llm.subconsultas = []
+    llm.redaccion = () => redaccion
+    const proveedor = crearProveedor({ baseUrl: 'http://llm.simulado/v1', apiKey: CLAVE_LLM, embeddingModel: '', chatModel: 'gpt-simulado', chatReasoningEffort: null, temperatura: null }, llm.fetch)
+    const buscador: BuscadorCorpus = {
+      descripcion: 'simulado',
+      fragmentosArticulo: async () => [],
+      buscar: async () => fragmentos.map(([tipo, contenido], indice) => ({
+        id: `sintetico_chunk_${indice + 1}`, score: 0.6, metadata: { article_id: 'sintetico', article_title: 'Artículo sintético', chunk_type: tipo, content: contenido },
+      })),
+    }
+    const motor = crearMotorDirecto({ proveedor, buscador, documentos: null, umbrales })
+    return { contrato: await consultar({ motor, registro, umbrales, timeoutMs: 30_000 }, { question: pregunta }, 'req-00000000'), llm }
+  }
+
+  it('una respuesta general sustentada y sin vacíos se presenta con cobertura alta y su fuente', async () => {
+    const { contrato, llm } = await preguntar('¿Cómo inicio un retiro de mi 401(k)?', PORTAL, {
+      respuesta: 'La solicitud de retiro se inicia desde el portal. [1]\nEn el portal, abre Retiros y selecciona Iniciar solicitud. [2]', puntos_clave: [], vacios_de_cobertura: [], contradicciones: [],
+    })
+    assert.equal(redacciones(llm.llamadas)[0].cuerpo.messages[0].content, PROMPT_SISTEMA)
+    assert.equal(contrato.outcome, 'answered')
+    assert.equal(contrato.coverage.level, 'alta')
+    assert.equal(contrato.coverage.sufficient, true)
+    assert.ok(contrato.answer?.trim())
+    assert.equal(contrato.coverage.relevant_fragments, 2)
+    assert.equal(contrato.sources.length, 1)
+    assert.equal(contrato.sources[0].fragment_count, 2)
+    assert.deepEqual(contrato.found_documents, [])
+  })
+
+  it('formulario y plazo pedidos pero ausentes bloquean la respuesta aunque la evidencia sea fuerte, y la explicación lo dice', async () => {
+    const { contrato } = await preguntar('¿Qué formulario debo usar para retirar mi 401(k) y cuál es el plazo exacto?', PORTAL, {
+      respuesta: '',
+      puntos_clave: [],
+      vacios_de_cobertura: ['Qué formulario específico debe usarse para retirar el 401(k).', 'Cuál es el plazo exacto para retirar el 401(k).'],
+      contradicciones: [],
+    })
+    assert.equal(contrato.outcome, 'insufficient')
+    assert.equal(contrato.answer, null)
+    assert.deepEqual(contrato.sources, [])
+    assert.equal(contrato.found_documents.length, 1)
+    assert.equal(contrato.coverage.level, 'baja')
+    assert.equal(contrato.coverage.relevant_fragments, 2)
+    // Sin nivel del motor también se explica el motivo real: no "apenas toca tu consulta".
+    assert.match(contrato.coverage.explanation, /declaró que la documentación recuperada no cubre partes de la pregunta/)
+  })
+
+  it('una respuesta condicional citada y sin vacíos se presenta con sus dos fuentes', async () => {
+    const { contrato } = await preguntar('¿Puedo hacer un retiro en servicio de mi 401(k)?', [
+      ['eligibility', 'En este ejemplo sintético, el retiro en servicio requiere al menos 60 años.'],
+      ['business_rules', 'El plan debe habilitar esa modalidad.'],
+    ], {
+      respuesta: 'Para poder hacer un retiro en servicio de tu 401(k), en este ejemplo necesitas tener al menos 60 años y que el plan habilite esa modalidad [1][2]. No puedo confirmar si tú puedes hacerlo sin saber tu edad y si tu plan habilita el retiro en servicio [1][2].',
+      puntos_clave: [], vacios_de_cobertura: [], contradicciones: [],
+    })
+    assert.equal(contrato.outcome, 'answered')
+    assert.equal(contrato.coverage.level, 'alta')
+    assert.equal(contrato.coverage.relevant_fragments, 2, 'las citas contiguas [1][2] cuentan las dos secciones')
+    assert.equal(contrato.sources[0].fragment_count, 2)
+    assert.doesNotMatch(contrato.answer ?? '', /\[\d\]/)
   })
 })

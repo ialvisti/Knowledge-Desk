@@ -45,6 +45,9 @@ const DESDE_MOTOR: Record<string, NivelCobertura> = {
 //     vacíos pueden bajar el nivel del motor, nunca subirlo. Si el motor no
 //     declara un nivel reconocido, se usa el de la política.
 //  5. Solo alta y parcial son suficientes para presentar una respuesta generada.
+//  6. Si la política da baja y hay vacíos declarados, la explicación lo dice, con
+//     o sin nivel del motor: "apenas toca tu consulta" sería falso cuando la
+//     evidencia es fuerte y lo que falta son partes de la pregunta.
 const ORDEN: Record<NivelCobertura, number> = { sin_evidencia: 0, baja: 1, parcial: 2, alta: 3 }
 
 const POR_VACIOS = 'El servicio de consulta declaró que la documentación recuperada no cubre partes de la pregunta. No es suficiente para responder con confianza.'
@@ -92,7 +95,7 @@ export function evaluarCobertura(evidencia: Evidencia[], nivelMotor: string | nu
       basis = 'motor'
     } else {
       level = politica
-      if (motor && level === 'baja' && vacios.length) explicacion = POR_VACIOS
+      if (level === 'baja' && vacios.length) explicacion = POR_VACIOS
     }
   }
   return {
