@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { articleId as calcularArticleId } from '../ids.ts'
 import type { Fragmento } from './chunker.ts'
+import type { FormatoDocumento } from './texto.ts'
 
 export type EstadoDocumento = 'procesando' | 'indexado' | 'error' | 'eliminando' | 'bloqueado' | 'retirado'
 export type EstadoVersion = 'procesando' | 'activa' | 'fallida' | 'reemplazada' | 'retirada'
@@ -24,7 +25,9 @@ export interface IdentidadArticulo {
 export interface Version {
   version: string
   articleId: string
-  archivo: { nombre: string; ruta: string; bytes: number; tipo: 'json'; sha256: string }
+  archivo: { nombre: string; ruta: string; bytes: number; tipo: FormatoDocumento; sha256: string }
+  // Documentos PDF, DOCX y TXT: caracteres del texto extraído (guardado aparte).
+  texto?: { caracteres: number; bloques: number } | null
   articulo: IdentidadArticulo
   cargadoEn: string
   estado: EstadoVersion
@@ -236,7 +239,26 @@ export class Registro {
   async eliminarFragmentos(docId: string, version: string): Promise<number> {
     const fragmentos = await this.leerFragmentos(docId, version)
     await conReintento(() => rm(this.rutaFragmentos(docId, version), { force: true }))
+    // El texto extraído es un derivado del original, como los fragmentos.
+    await conReintento(() => rm(this.rutaTexto(docId, version), { force: true }))
     return fragmentos.length
+  }
+
+  // Texto extraído de un PDF, DOCX o TXT: lo que se fragmentó, tal cual.
+  private rutaTexto(docId: string, version: string) {
+    validarIdentidad(docId, version)
+    return path.join(this.dir, 'textos', docId, `v${version}.txt`)
+  }
+
+  async guardarTexto(docId: string, version: string, texto: string) {
+    const ruta = this.rutaTexto(docId, version)
+    await mkdir(path.dirname(ruta), { recursive: true })
+    await writeFile(ruta, texto, 'utf8')
+  }
+
+  async leerTexto(docId: string, version: string): Promise<string | null> {
+    const ruta = this.rutaTexto(docId, version)
+    return existsSync(ruta) ? readFile(ruta, 'utf8') : null
   }
 }
 

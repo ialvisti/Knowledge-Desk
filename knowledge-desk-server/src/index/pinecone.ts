@@ -20,9 +20,23 @@ function clasificar(error: unknown, accion: string, signal?: AbortSignal): Indic
 // llama-text-embed-v2 y metadatos planos), así lo que se indexa aquí es
 // recuperable por el endpoint knowledge-question.
 //
-// soloLectura (modo directo): upsert, listado y borrado se rechazan antes de
-// cualquier petición. Solo se busca.
-export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi?: FetchApi; maxRetries?: number; soloLectura?: boolean } = {}): IndiceCorpus & BuscadorCorpus {
+// soloLectura (namespace base del modo directo): upsert, listado y borrado se
+// rechazan antes de cualquier petición. Solo se busca.
+// escrituraAcotada (namespace de documentos del modo directo): el adaptador se
+// niega a operar sobre un namespace protegido y solo escribe, lista o borra
+// IDs con el prefijo indicado (los que gestiona Knowledge Desk).
+export interface OpcionesIndicePinecone {
+  fetchApi?: FetchApi
+  maxRetries?: number
+  soloLectura?: boolean
+  escrituraAcotada?: { prefijo: string; namespacesProtegidos: string[] }
+}
+
+export function crearIndicePinecone(config: PineconeConfig, opciones: OpcionesIndicePinecone = {}): IndiceCorpus & BuscadorCorpus {
+  const acotada = opciones.escrituraAcotada
+  if (acotada && (acotada.namespacesProtegidos.includes(config.namespace) || !acotada.prefijo)) {
+    throw new Error('El namespace de escritura de Knowledge Desk no puede ser un namespace protegido')
+  }
   // El SDK no acepta una señal por operación. Cada llamada guarda la suya en un
   // contexto asíncrono y el fetch del SDK la usa, así cancelar corta de verdad
   // la petición HTTP en vuelo.
@@ -50,8 +64,11 @@ export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi
     }
   }
 
-  function exigirEscritura(accion: string) {
+  function exigirEscritura(accion: string, ids: string[]) {
     if (opciones.soloLectura) throw new IndiceError('solo_lectura', `El índice compartido es de solo lectura: no se permite ${accion}`)
+    if (acotada && ids.some(id => !id.startsWith(acotada.prefijo))) {
+      throw new IndiceError('solo_lectura', `Knowledge Desk solo gestiona IDs "${acotada.prefijo}…": no se permite ${accion} de otros registros`)
+    }
   }
 
   async function buscar(texto: string, topK: number, extra: OpcionesBusqueda & { soloArticulo?: string } = {}): Promise<Coincidencia[]> {
@@ -74,7 +91,7 @@ export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi
     descripcion: `Pinecone · namespace ${config.namespace}`,
 
     async upsert(registros: RegistroIndice[], signal?: AbortSignal) {
-      exigirEscritura('el upsert de registros')
+      exigirEscritura('el upsert de registros', registros.map(registro => registro.id))
       for (let inicio = 0; inicio < registros.length; inicio += LOTE_UPSERT) {
         const lote = registros.slice(inicio, inicio + LOTE_UPSERT).map(registro => ({ _id: registro.id, content: registro.texto, ...registro.metadata }))
         await ejecutar('el upsert de registros', signal, () => indice.upsertRecords({ records: lote }))
@@ -82,7 +99,7 @@ export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi
     },
 
     async listarIds(prefijo: string, signal?: AbortSignal) {
-      exigirEscritura('el listado de registros')
+      exigirEscritura('el listado de registros', [prefijo])
       const ids: string[] = []
       let token: string | undefined
       do {
@@ -94,7 +111,7 @@ export function crearIndicePinecone(config: PineconeConfig, opciones: { fetchApi
     },
 
     async eliminar(ids: string[], signal?: AbortSignal) {
-      exigirEscritura('el borrado de registros')
+      exigirEscritura('el borrado de registros', ids)
       for (let inicio = 0; inicio < ids.length; inicio += LOTE_DELETE) {
         const lote = ids.slice(inicio, inicio + LOTE_DELETE)
         await ejecutar('el borrado de registros', signal, () => indice.deleteMany({ ids: lote }))

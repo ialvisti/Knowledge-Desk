@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/cliente'
-import { cargarDocumento, listarDocumentos, reintentarDocumento, textoLimite, validarArchivo } from '../api/servicios'
+import { FORMATOS, aceptarFormatos, cargarDocumento, listarDocumentos, reintentarDocumento, textoLimite, validarArchivo } from '../api/servicios'
 import type { DocumentoResumen } from '../api/tipos'
 import { DialogoEliminacion, DialogoReemplazo } from '../components/documentos'
 import { Button, Icon, Spinner, StatusBadge } from '../components/ui'
@@ -83,18 +83,20 @@ function DocumentosServidor() {
   const puede = estado?.puedeAdministrar ?? false
   const cargaDisponible = puede && indexacion
   const maxBytes = estado?.limites.archivoMaxBytes
+  const formatos = estado?.limites.formatos ?? FORMATOS
+  const conTexto = formatos.some(formato => formato !== 'json')
 
   const alCambiar = useCallback(() => { recargar(); void revalidar() }, [recargar, revalidar])
 
   async function recibir(archivos: File[]) {
     const nuevos: Aviso[] = []
     for (const archivo of archivos) {
-      const problema = validarArchivo(archivo, maxBytes)
+      const problema = validarArchivo(archivo, maxBytes, formatos)
       if (problema) { nuevos.push({ id: Math.random(), tipo: 'error', texto: problema }); continue }
       setSubiendo(valor => valor + 1)
       try {
         const { documento } = await cargarDocumento(archivo)
-        nuevos.push({ id: Math.random(), tipo: 'ok', texto: `${archivo.name}: artículo "${documento.titulo}" recibido. Se está indexando; quedará disponible para consultas al terminar.` })
+        nuevos.push({ id: Math.random(), tipo: 'ok', texto: `${archivo.name}: ${/\.json$/i.test(archivo.name) ? 'artículo' : 'documento'} "${documento.titulo}" recibido. Se está indexando; quedará disponible para consultas al terminar.` })
       } catch (fallo) {
         nuevos.push({ id: Math.random(), tipo: 'error', texto: `No fue posible cargar ${archivo.name}. ${fallo instanceof ApiError ? fallo.message : 'Error de conexión.'}` })
       } finally {
@@ -137,11 +139,11 @@ function DocumentosServidor() {
           <span className="upload-icon"><Icon name="cloud_upload" filled /></span>
           <h2>Cargar documento</h2>
           <p>Arrastra archivos aquí o haz clic para explorar.</p>
-          <p className="upload-formats" id="upload-formats" title="Artículos de conocimiento kb_article_v2 (metadata y details)">{textoLimite(maxBytes)}</p>
+          <p className="upload-formats" id="upload-formats" title={conTexto ? 'Artículos JSON kb_article_v2, PDF con texto, DOCX y TXT en UTF-8' : 'Artículos de conocimiento kb_article_v2 (metadata y details)'}>{textoLimite(maxBytes, formatos)}</p>
           <Button type="button" className="button-explore" disabled={!cargaDisponible || subiendo > 0} onClick={() => input.current?.click()}>
             {subiendo > 0 ? 'Subiendo…' : 'Explorar archivos'}
           </Button>
-          <input ref={input} type="file" className="sr-only" tabIndex={-1} aria-label="Seleccionar artículos JSON" aria-describedby="upload-formats" accept=".json,application/json" multiple
+          <input ref={input} type="file" className="sr-only" tabIndex={-1} aria-label={conTexto ? 'Seleccionar documentos' : 'Seleccionar artículos JSON'} aria-describedby="upload-formats" accept={aceptarFormatos(formatos)} multiple
             onChange={event => { void recibir(Array.from(event.target.files ?? [])); event.target.value = '' }} />
         </div>
         {motivoBloqueo && <p className="upload-explanation"><Icon name="info" />{motivoBloqueo}</p>}
@@ -164,7 +166,7 @@ function DocumentosServidor() {
                 <td data-label="Nombre"><div className="document-name">
                   <Icon name={alerta ? 'radio_button_checked' : 'description'} className={alerta ? 'text-error' : ''} />
                   {/* El nombre abre el JSON auténtico de la versión vigente. */}
-                  <Link to={`/documentos/${doc.id}`} className="document-link" title={`${doc.titulo} · ${doc.articuloId} · ver el JSON`}>{doc.nombre}</Link>
+                  <Link to={`/documentos/${doc.id}`} className="document-link" title={`${doc.titulo} · ${doc.articuloId} · ver el ${doc.tipo === 'json' ? 'JSON' : 'documento'}`}>{doc.nombre}</Link>
                 </div></td>
                 <td data-label="Fecha de carga">{fechaCorta(doc.fechaCarga)}</td>
                 <td data-label="Fragmentos">{doc.fragmentos ?? '-'}</td>
@@ -201,7 +203,7 @@ function DocumentosServidor() {
         </div>
       </section>
     </div>
-    {reemplazo && <DialogoReemplazo documento={reemplazo} maxBytes={maxBytes} onClose={() => setReemplazo(null)} onCambio={alCambiar} />}
+    {reemplazo && <DialogoReemplazo documento={reemplazo} maxBytes={maxBytes} formatos={formatos} onClose={() => setReemplazo(null)} onCambio={alCambiar} />}
     {eliminacion && <DialogoEliminacion documento={eliminacion} onClose={() => setEliminacion(null)} onCambio={alCambiar} />}
   </main>
 }

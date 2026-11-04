@@ -37,6 +37,8 @@ export function chunkId(docId: string, version: string, indice: number): string 
   return `${prefijoVersion(docId, version)}${indice}`
 }
 
+export const PREFIJO_KD = 'kd_'
+
 export function esArticuloKd(id: string): boolean {
-  return id.startsWith('kd_')
+  return id.startsWith(PREFIJO_KD)
 }

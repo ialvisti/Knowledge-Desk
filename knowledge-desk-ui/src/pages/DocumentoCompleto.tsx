@@ -40,9 +40,11 @@ export function DocumentoCompleto() {
     detalleDocumento(id, versionPedida).then(datos => {
       if (controlador.signal.aborted) return
       setCargado({ pedido, detalle: datos })
-      if (!datos.version.archivoUrl) return
-      leerOriginal(datos.version.archivoUrl, controlador.signal).then(leido => setOriginal({ pedido, datos: leido }), (fallo: unknown) => {
-        if (!controlador.signal.aborted) setFallos({ pedido, original: mensaje(fallo, 'No se pudo leer el JSON original.') })
+      // PDF, DOCX y TXT se muestran con su texto extraído; el JSON, con sus bytes.
+      const lectura = datos.version.tipo === 'json' ? datos.version.archivoUrl : datos.version.texto?.url ?? null
+      if (!lectura) return
+      leerOriginal(lectura, controlador.signal).then(leido => setOriginal({ pedido, datos: leido }), (fallo: unknown) => {
+        if (!controlador.signal.aborted) setFallos({ pedido, original: mensaje(fallo, datos.version.tipo === 'json' ? 'No se pudo leer el JSON original.' : 'No se pudo leer el texto extraído.') })
       })
     }, (fallo: unknown) => {
       if (!controlador.signal.aborted) setFallos({ pedido, documento: mensaje(fallo, 'No se pudo abrir el documento.') })
@@ -77,19 +79,20 @@ export function DocumentoCompleto() {
   const { documento, version, fragmentos } = detalle
   const articulo = version.articulo
   const vigente = version.estado === 'activa' && documento.estado === 'indexado'
+  const esJson = version.tipo === 'json'
 
   return <main id="contenido" tabIndex={-1} className="page-container doc-view">
     <div className="results-toolbar">
       <button type="button" className="text-link" onClick={() => history.back()}><Icon name="arrow_back" />Volver</button>
     </div>
-    <p className="eyebrow">Artículo de conocimiento · JSON kb_article_v2</p>
-    <h1 className="doc-view-title"><IconoArchivo grande />{articulo.titulo}</h1>
+    <p className="eyebrow">{esJson ? 'Artículo de conocimiento · JSON kb_article_v2' : `Documento ${version.tipo.toUpperCase()} · texto extraído en el servidor`}</p>
+    <h1 className="doc-view-title"><IconoArchivo grande tipo={version.tipo} />{articulo.titulo}</h1>
     <p className="doc-view-meta">
       <span className="doc-view-file">{version.nombre}</span> · {documento.id} · v{version.version} · <code>{articulo.id}</code> · cargado el {fechaTexto(version.cargadoEn)} · {plural(version.fragmentos, 'fragmento', 'fragmentos')} · {tamano(version.bytes)} · <StatusBadge status={documento.estado} />
     </p>
-    <p className="doc-view-meta doc-view-identity">
+    {esJson && <p className="doc-view-meta doc-view-identity">
       record_keeper: <code>{articulo.recordKeeper ?? 'null (todos)'}</code> · plan_type: <code>{articulo.planType ?? 'null (todos)'}</code> · esquema: <code>{articulo.schemaVersion ?? 'sin declarar'}</code>
-    </p>
+    </p>}
     {!vigente && <p className="lock-note doc-view-notice"><Icon name="history" />
       {documento.estado === 'retirado' ? 'Este documento fue retirado: ya no sustenta respuestas.'
         : version.estado === 'reemplazada' ? `Esta versión fue reemplazada por la v${documento.versionActiva}; ya no sustenta respuestas.`
@@ -97,18 +100,34 @@ export function DocumentoCompleto() {
     </p>}
     {articulo.avisos.length > 0 && <ul className="doc-view-warnings">{articulo.avisos.map(aviso => <li key={aviso}><Icon name="info" />{aviso}</li>)}</ul>}
 
-    <section className="doc-json" aria-labelledby="json-original">
+    {!esJson && <section className="doc-json" aria-labelledby="texto-extraido">
+      <h2 id="texto-extraido">Texto extraído de la versión v{version.version}</h2>
+      <p className="text-muted">
+        {version.texto ? `${plural(version.texto.caracteres, 'carácter', 'caracteres')} en ${plural(version.texto.bloques, 'bloque', 'bloques')}. ` : ''}
+        SHA-256 del original: <code>{version.sha256}</code>
+        {version.archivoUrl && <> · <a className="text-link" href={`${version.archivoUrl}&descargar=1`} download={version.nombre}>Descargar el {version.tipo.toUpperCase()} original</a></>}
+      </p>
+      {!version.texto
+        ? <p className="text-muted">El texto extraído no está disponible para esta versión.</p>
+        : errorOriginal ? <p role="alert" className="notice notice-error"><Icon name="error" filled />{errorOriginal}</p>
+          : !leido ? <p className="loading-line"><Spinner />Leyendo el texto extraído…</p>
+            : <pre className="doc-fragment-text doc-texto-extraido">{leido.texto}</pre>}
+    </section>}
+
+    {esJson && <section className="doc-json" aria-labelledby="json-original">
       <h2 id="json-original">JSON original de la versión v{version.version}</h2>
       {!version.archivoUrl
         ? <p className="text-muted">El archivo original ya no está disponible.</p>
         : errorOriginal ? <p role="alert" className="notice notice-error"><Icon name="error" filled />{errorOriginal}</p>
           : !leido ? <p className="loading-line"><Spinner />Leyendo el JSON original…</p>
             : <VisorJson key={pedido} texto={leido.texto} bytes={leido.bytes} sha256Esperado={version.sha256} rutasUsadas={rutasUsadas} descargaUrl={`${version.archivoUrl}&descargar=1`} nombre={version.nombre} />}
-    </section>
+    </section>}
 
     <section className="doc-text" aria-labelledby="texto-indexado">
       <h2 id="texto-indexado">Fragmentos indexados</h2>
-      <p className="text-muted doc-text-intro">Cada fragmento sale de una o varias rutas del JSON y es lo que el índice usa para responder.</p>
+      <p className="text-muted doc-text-intro">{esJson
+        ? 'Cada fragmento sale de una o varias rutas del JSON y es lo que el índice usa para responder.'
+        : 'Cada fragmento sale de uno o varios bloques del texto extraído (títulos, párrafos, ítems o preguntas), con su clasificación, y es lo que el índice usa para responder.'}</p>
       {fragmentos.length
         ? fragmentos.map(fragmento => {
           const usado = usadosIndices.has(fragmento.indice)

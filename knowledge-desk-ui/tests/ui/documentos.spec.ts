@@ -204,3 +204,53 @@ test.describe('Vista previa con datos temporales', () => {
     await expect(page.locator('.document-list-footer')).not.toContainText(aviso)
   })
 })
+
+// HU07 con un servidor que procesa PDF, DOCX y TXT (modo directo con
+// namespace de documentos): la interfaz usa los formatos que declara el servidor.
+const FORMATOS_TEXTO = { limites: { preguntaMin: 10, preguntaMax: 100, archivoMaxBytes: 52428800, formatos: ['json', 'pdf', 'docx', 'txt'], esquema: 'kb_article_v2' } }
+const TEXTO_EXTRAIDO = 'Guía de licencias del personal\n\nRequisitos\nPueden solicitar la licencia los colaboradores con contrato vigente.'
+const DETALLE_TXT = {
+  documento: { ...documento('DOC-0009', 'guia-licencias.txt', 'indexado'), tipo: 'txt', titulo: 'Guía de licencias del personal', articuloId: 'guia_licencias_txt' },
+  version: {
+    version: '1.0', estado: 'activa', nombre: 'guia-licencias.txt', tipo: 'txt', bytes: 120, sha256: 'a'.repeat(64), cargadoEn: '2026-10-20T15:00:00.000Z', fragmentos: 1,
+    articulo: { id: 'guia_licencias_txt', titulo: 'Guía de licencias del personal', recordKeeper: null, planType: null, schemaVersion: null, avisos: [] },
+    error: null, archivoUrl: '/api/documentos/DOC-0009/archivo?version=1.0', texto: { caracteres: TEXTO_EXTRAIDO.length, bloques: 3, url: '/api/documentos/DOC-0009/texto?version=1.0' },
+  },
+  fragmentos: [{ indice: 1, texto: 'Guía de licencias del personal — Requisitos\nPueden solicitar la licencia los colaboradores con contrato vigente.', tipo: 'eligibility', categoria: 'Requisitos', nivel: 'high', rutas: ['bloques[3]'], parte: null }],
+  versiones: [{ version: '1.0', estado: 'activa', nombre: 'guia-licencias.txt', cargadoEn: '2026-10-20T15:00:00.000Z', fragmentos: 1 }],
+  operaciones: [],
+}
+
+test.describe('HU07 · documentos PDF, DOCX y TXT procesados en el servidor', () => {
+  test('acepta los formatos que declara el servidor y rechaza una imagen sin enviarla', async ({ page }) => {
+    let cargas = 0
+    await simularServidor(page, { documentos: DOCUMENTOS, estado: FORMATOS_TEXTO })
+    page.on('request', peticion => { if (peticion.method() === 'POST' && peticion.url().endsWith('/api/documentos')) cargas++ })
+    await page.goto('/documentos')
+    await expect(page.getByText('JSON, PDF, DOCX, TXT (Max 50MB)')).toBeVisible()
+    const selector = page.getByLabel('Seleccionar documentos')
+    await expect(selector).toHaveAttribute('accept', '.json,application/json,.pdf,.docx,.txt')
+    await selector.setInputFiles({ name: 'diagrama.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') })
+    await expect(page.getByRole('alert')).toContainText('diagrama.png: formato no admitido. Formatos admitidos: artículo JSON (kb_article_v2), PDF con texto, DOCX y TXT.')
+    expect(cargas).toBe(0)
+  })
+
+  test('un TXT muestra su texto extraído, el SHA-256 del original y sus fragmentos clasificados, sin visor JSON', async ({ page }) => {
+    await simularServidor(page, {
+      estado: FORMATOS_TEXTO,
+      otras: {
+        '/api/documentos/DOC-0009': { body: DETALLE_TXT },
+        '/api/documentos/DOC-0009/texto': { body: TEXTO_EXTRAIDO, contentType: 'text/plain; charset=utf-8' },
+      },
+    })
+    await page.goto('/documentos/DOC-0009')
+    await expect(page.getByText('Documento TXT · texto extraído en el servidor')).toBeVisible()
+    const texto = page.getByRole('region', { name: 'Texto extraído de la versión v1.0' })
+    await expect(texto.locator('pre')).toHaveText(TEXTO_EXTRAIDO)
+    await expect(texto).toContainText('a'.repeat(64))
+    await expect(texto.getByRole('link', { name: 'Descargar el TXT original' })).toHaveAttribute('href', '/api/documentos/DOC-0009/archivo?version=1.0&descargar=1')
+    await expect(page.getByRole('region', { name: 'JSON formateado' })).toHaveCount(0)
+    await expect(page.locator('.doc-fragment-meta')).toContainText('#1 · eligibility')
+    await expect(page.locator('.doc-fragment-paths')).toContainText('bloques[3]')
+  })
+})

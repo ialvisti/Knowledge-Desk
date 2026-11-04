@@ -1,0 +1,390 @@
+{
+  "llamadas_externas": [
+    {
+      "llamada": "pinecone.describeIndex",
+      "ms": 923
+    },
+    {
+      "llamada": "pinecone.describeIndexStats",
+      "ms": 1074
+    },
+    {
+      "llamada": "pinecone.list (namespace KD, prefijo del documento)",
+      "ms": 872
+    },
+    {
+      "llamada": "pinecone.searchRecords (namespace KD, filtro del documento)",
+      "ms": 841
+    },
+    {
+      "llamada": "pinecone.list (namespace KD, prefijo del documento)",
+      "ms": 917
+    },
+    {
+      "llamada": "pinecone.searchRecords (namespace KD, filtro del documento)",
+      "ms": 877
+    },
+    {
+      "llamada": "pinecone.list (namespace KD, prefijo del documento)",
+      "ms": 1064
+    },
+    {
+      "llamada": "pinecone.searchRecords (namespace KD, filtro del documento)",
+      "ms": 1023
+    },
+    {
+      "llamada": "pinecone.list (verificación de limpieza)"
+    },
+    {
+      "llamada": "pinecone.list (verificación de limpieza)"
+    },
+    {
+      "llamada": "pinecone.list (verificación de limpieza)"
+    },
+    {
+      "llamada": "pinecone.describeIndexStats",
+      "ms": 1058
+    }
+  ],
+  "documentos": [
+    {
+      "id": "DOC-0001",
+      "nombre": "qa-sintetico-prestamo-mw1jtxei.txt",
+      "formato": "txt",
+      "estado": "indexado",
+      "duracion_ms": 5822,
+      "operacion": {
+        "resultado": "exitoso",
+        "pasos": [
+          "validacion:ok",
+          "lectura:ok",
+          "fragmentacion:ok",
+          "clasificacion:ok",
+          "embeddings:ok",
+          "verificacion:ok",
+          "activacion:ok"
+        ],
+        "embeddings": {
+          "hechos": 4,
+          "total": 4
+        }
+      },
+      "original_identico": true,
+      "sha256_coincide": true,
+      "texto_extraido": {
+        "caracteres": 527,
+        "contiene_frase": true
+      },
+      "fragmentos": [
+        {
+          "indice": 1,
+          "tipo": "overview",
+          "categoria": "Alcance",
+          "rutas": [
+            "bloques[3]"
+          ]
+        },
+        {
+          "indice": 2,
+          "tipo": "eligibility",
+          "categoria": "Requisitos",
+          "rutas": [
+            "bloques[5]"
+          ]
+        },
+        {
+          "indice": 3,
+          "tipo": "business_rules",
+          "categoria": "Reglas",
+          "rutas": [
+            "bloques[7]"
+          ]
+        },
+        {
+          "indice": 4,
+          "tipo": "steps",
+          "categoria": "Procedimiento de préstamo",
+          "rutas": [
+            "bloques[9]",
+            "bloques[10]"
+          ]
+        }
+      ],
+      "pinecone": {
+        "namespace": "knowledge_desk_documents",
+        "ids_listados": 4,
+        "todos_kd": true,
+        "busqueda_filtrada": {
+          "id": "kd_doc0001_v1_0_chunk_3",
+          "score": 0.3929,
+          "kd_document_id": "DOC-0001",
+          "kd_format": "txt",
+          "chunk_type": "business_rules"
+        }
+      }
+    },
+    {
+      "id": "DOC-0002",
+      "nombre": "qa-sintetico-salas-mw1jtxei.docx",
+      "formato": "docx",
+      "estado": "indexado",
+      "duracion_ms": 5870,
+      "operacion": {
+        "resultado": "exitoso",
+        "pasos": [
+          "validacion:ok",
+          "lectura:ok",
+          "fragmentacion:ok",
+          "clasificacion:ok",
+          "embeddings:ok",
+          "verificacion:ok",
+          "activacion:ok"
+        ],
+        "embeddings": {
+          "hechos": 2,
+          "total": 2
+        }
+      },
+      "original_identico": true,
+      "sha256_coincide": true,
+      "texto_extraido": {
+        "caracteres": 246,
+        "contiene_frase": true
+      },
+      "fragmentos": [
+        {
+          "indice": 1,
+          "tipo": "definitions",
+          "categoria": "Definiciones",
+          "rutas": [
+            "bloques[3]"
+          ]
+        },
+        {
+          "indice": 2,
+          "tipo": "business_rules",
+          "categoria": "Reglas",
+          "rutas": [
+            "bloques[5]"
+          ]
+        }
+      ],
+      "pinecone": {
+        "namespace": "knowledge_desk_documents",
+        "ids_listados": 2,
+        "todos_kd": true,
+        "busqueda_filtrada": {
+          "id": "kd_doc0002_v1_0_chunk_2",
+          "score": 0.3068,
+          "kd_document_id": "DOC-0002",
+          "kd_format": "docx",
+          "chunk_type": "business_rules"
+        }
+      }
+    },
+    {
+      "id": "DOC-0003",
+      "nombre": "qa-sintetico-parqueadero-mw1jtxei.pdf",
+      "formato": "pdf",
+      "estado": "indexado",
+      "duracion_ms": 7477,
+      "operacion": {
+        "resultado": "exitoso",
+        "pasos": [
+          "validacion:ok",
+          "lectura:ok",
+          "fragmentacion:ok",
+          "clasificacion:ok",
+          "embeddings:ok",
+          "verificacion:ok",
+          "activacion:ok"
+        ],
+        "embeddings": {
+          "hechos": 2,
+          "total": 2
+        }
+      },
+      "original_identico": true,
+      "sha256_coincide": true,
+      "texto_extraido": {
+        "caracteres": 201,
+        "contiene_frase": true
+      },
+      "fragmentos": [
+        {
+          "indice": 1,
+          "tipo": "eligibility",
+          "categoria": "Requisitos",
+          "rutas": [
+            "bloques[3]"
+          ]
+        },
+        {
+          "indice": 2,
+          "tipo": "fees_details",
+          "categoria": "Monto",
+          "rutas": [
+            "bloques[5]"
+          ]
+        }
+      ],
+      "pinecone": {
+        "namespace": "knowledge_desk_documents",
+        "ids_listados": 2,
+        "todos_kd": true,
+        "busqueda_filtrada": {
+          "id": "kd_doc0003_v1_0_chunk_2",
+          "score": 0.2897,
+          "kd_document_id": "DOC-0003",
+          "kd_format": "pdf",
+          "chunk_type": "fees_details"
+        }
+      }
+    }
+  ],
+  "consulta": {
+    "endpoint": "POST /api/v1/knowledge-question",
+    "pregunta": "¿En qué plazo se debe devolver el equipo portátil prestado?",
+    "http": 200,
+    "latencia_ms": 7386,
+    "engine": "directo",
+    "outcome": "answered",
+    "answer": "El equipo portátil prestado debe devolverse dentro de un plazo máximo de 7 días calendario.",
+    "key_points": [
+      "Plazo máximo de devolución: 7 días calendario."
+    ],
+    "coverage": {
+      "level": "parcial",
+      "sufficient": true,
+      "relevant_fragments": 1,
+      "documents": 1
+    },
+    "retrieval": {
+      "fragments_retrieved": 30,
+      "articles_consulted": 9,
+      "model": "gpt-5.5",
+      "sub_queries": [
+        "Timeframe or deadline for returning a borrowed company laptop or loaned equipment after use or separation"
+      ],
+      "generated": true
+    },
+    "sources": [
+      {
+        "id": "kd_doc0001_v1_0",
+        "kind": "document",
+        "title": "Política sintética de préstamo de equipos QA mw1jtxei",
+        "file_name": "qa-sintetico-prestamo-mw1jtxei.txt",
+        "document_id": "DOC-0001",
+        "affinity": 0.66,
+        "fragment_count": 1
+      }
+    ]
+  },
+  "base": {
+    "antes": {
+      "base": 936,
+      "docs": 0,
+      "docsExiste": false
+    },
+    "despues": {
+      "base": 936,
+      "docs": 0,
+      "docsExiste": true
+    },
+    "kb_articles_intacto": true
+  },
+  "limpieza": {
+    "DOC-0001": {
+      "resultado": "exitoso",
+      "contadores": {
+        "fragmentos": {
+          "hechos": 4,
+          "total": 4
+        },
+        "embeddings": {
+          "hechos": 4,
+          "total": 4
+        },
+        "registro": "retirado"
+      }
+    },
+    "DOC-0002": {
+      "resultado": "exitoso",
+      "contadores": {
+        "fragmentos": {
+          "hechos": 2,
+          "total": 2
+        },
+        "embeddings": {
+          "hechos": 2,
+          "total": 2
+        },
+        "registro": "retirado"
+      }
+    },
+    "DOC-0003": {
+      "resultado": "exitoso",
+      "contadores": {
+        "fragmentos": {
+          "hechos": 2,
+          "total": 2
+        },
+        "embeddings": {
+          "hechos": 2,
+          "total": 2
+        },
+        "registro": "retirado"
+      }
+    },
+    "ids_restantes_tras_api": 0
+  },
+  "servidor": {
+    "estado": {
+      "modo": "directo",
+      "consulta": {
+        "configurada": true,
+        "motor": "directo"
+      },
+      "indexacion": {
+        "configurada": true,
+        "destino": "Pinecone · namespace knowledge_desk_documents"
+      },
+      "busqueda": {
+        "destino": "Pinecone · namespace kb_articles",
+        "soloLectura": true
+      },
+      "faltan": [],
+      "formatos": [
+        "json",
+        "pdf",
+        "docx",
+        "txt"
+      ]
+    },
+    "detenido": true,
+    "rutas_atendidas": [
+      "/api/salud",
+      "/api/estado",
+      "/api/documentos",
+      "/api/documentos/DOC-n",
+      "/api/operaciones/OP-2026-0001",
+      "/api/documentos/DOC-n/archivo",
+      "/api/documentos/DOC-n/texto",
+      "/api/operaciones/OP-2026-0002",
+      "/api/operaciones/OP-2026-0003",
+      "/api/v1/knowledge-question",
+      "/api/documentos/DOC-n/eliminacion"
+    ]
+  },
+  "indice": {
+    "nombre": "kb-articles-production",
+    "dimension": 1024,
+    "modelo": "llama-text-embed-v2",
+    "field_map": {
+      "text": "content"
+    }
+  },
+  "duracion_total_ms": 52877,
+  "fecha_prueba": "2026-11-03",
+  "entorno": "Backend local de Knowledge Desk con Pinecone y modelo reales"
+}

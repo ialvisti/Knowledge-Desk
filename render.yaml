@@ -6,13 +6,20 @@
 #   búsqueda de texto en el índice Pinecone compartido (embeddings integrados) y
 #   redacción con la API de OpenAI. Las respuestas y fuentes salen del corpus de
 #   ForUsGuide (namespace kb_articles).
-# - Solo consulta: en modo directo la clave de Pinecone únicamente busca. El
-#   adaptador rechaza upsert, listado y borrado antes de llamar a Pinecone y el
-#   servidor no admite cargas (INDEX_NOT_CONFIGURED). Documentos abre la
-#   colección del navegador (IndexedDB de cada usuario).
+# - Corpus base de solo lectura: en kb_articles (y en PINECONE_NAMESPACE) la clave
+#   de Pinecone únicamente busca. Documentos carga JSON, PDF, DOCX y TXT en el
+#   servidor y los indexa SOLO en KD_DOCUMENTOS_NAMESPACE (knowledge_desk_documents),
+#   con IDs "kd_…". El servidor no arranca si ese namespace es el base o kb_articles.
+# - Plan free sin disco: el registro, los originales y el texto extraído viven en
+#   /tmp y se pierden al reiniciar o redesplegar. Los vectores de esos documentos
+#   siguen en knowledge_desk_documents, pero la consulta ya no los sirve (solo se
+#   usan versiones del registro) y un documento nuevo con el mismo ID los reemplaza.
+#   La interfaz avisa del almacenamiento temporal (KD_DATOS_TEMPORALES).
 # - Acceso público (KD_ACCESO_PUBLICO=true): sin inicio de sesión. Cada consulta
-#   hace 2 llamadas al modelo y 1-4 búsquedas en Pinecone con las claves del
-#   servidor, y consume su cuota.
+#   hace 2 llamadas al modelo y busca la pregunta y cada subconsulta (hasta 3) en
+#   los 2 namespaces: de 2 a 8 búsquedas en Pinecone con las claves del servidor,
+#   que consumen su cuota. Cualquiera con la URL puede además cargar, reemplazar y
+#   eliminar CUALQUIER documento de Knowledge Desk: no hay pertenencia por usuario.
 # - Plan free, sin disco: el registro local vive en /tmp y es temporal
 #   (KD_DATOS_TEMPORALES=true). La persistencia es un paso futuro no autorizado.
 # - No contiene secretos. Las variables con "sync: false" se rellenan en el panel
@@ -50,6 +57,9 @@ services:
         sync: false
       - key: PINECONE_NAMESPACE
         value: kb_articles
+      # Namespace propio de los documentos de Knowledge Desk en el mismo índice.
+      - key: KD_DOCUMENTOS_NAMESPACE
+        value: knowledge_desk_documents
       # Redacción y subconsultas con el mismo modelo que usa ForUsGuide.
       - key: KD_LLM_BASE_URL
         value: https://api.openai.com/v1
@@ -61,11 +71,13 @@ services:
       # el arranque en frío del plan free.
       - key: KD_CONSULTA_TIMEOUT_MS
         value: "120000"
-      # Límite de artículos JSON (sin efecto mientras no haya indexación).
+      # Tamaño máximo de cada documento cargado (JSON, PDF, DOCX o TXT).
       - key: KD_MAX_ARTICULO_MB
         value: "10"
       # Acceso directo sin inicio de sesión, por decisión del usuario para esta
-      # vista previa: cualquiera con la URL consulta. No se combina con
+      # vista previa: cualquiera con la URL consulta y carga, reemplaza o elimina
+      # cualquier documento de Knowledge Desk, sin pertenencia por usuario (nunca
+      # escribe en kb_articles). No se combina con
       # KD_ACCESO_BASICO, KD_IDENTIDAD_HEADER, KD_PROXY_SECRETO ni KD_OPERADORES:
       # si alguna está definida, el servidor no arranca.
       - key: KD_ACCESO_PUBLICO

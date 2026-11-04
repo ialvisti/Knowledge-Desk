@@ -10,6 +10,7 @@ import { crearIndicePinecone } from '../src/index/pinecone.ts'
 import { IndiceError } from '../src/index/types.ts'
 import { articuloSimple, json } from './support/articulos.ts'
 import { multipart } from './support/entorno.ts'
+import { crearLlmSimulado } from './support/llm-simulado.ts'
 import { iniciarPineconeSimulado, type PineconeSimulado } from './support/pinecone-simulado.ts'
 
 // Modo directo: el pipeline knowledge-question sin ForUsGuide. Pinecone se
@@ -19,40 +20,6 @@ import { iniciarPineconeSimulado, type PineconeSimulado } from './support/pineco
 const CLAVE_PINECONE = 'pinecone-sintetica-directo-0123456789'
 const CLAVE_LLM = 'llm-sintetica-directo-0123456789'
 
-interface LlamadaLlm { ruta: string; cuerpo: Record<string, any>; autorizacion: string | null }
-
-function crearLlmSimulado() {
-  const estado = {
-    llamadas: [] as LlamadaLlm[],
-    subconsultas: ['hardship withdrawal eligibility immediate heavy financial need'] as unknown,
-    // Respuesta de redacción: por defecto cita las dos primeras secciones.
-    redaccion: (): unknown => ({
-      respuesta: 'A hardship withdrawal covers an immediate and heavy financial need [1]. The plan must allow it and the reason must be IRS-approved [2].',
-      puntos_clave: [{ texto: 'Only for an immediate and heavy financial need.', fuentes: [1] }],
-      vacios_de_cobertura: [],
-      contradicciones: [],
-    }),
-    fallar: null as null | 'descomposicion' | 'redaccion',
-    colgar: false,
-    fetch: (async (input: string | URL | Request, init?: RequestInit) => {
-      const ruta = new URL(String(input)).pathname
-      const cuerpo = JSON.parse(String(init?.body ?? '{}')) as Record<string, any>
-      const cabeceras = new Headers(init?.headers)
-      estado.llamadas.push({ ruta, cuerpo, autorizacion: cabeceras.get('authorization') })
-      if (estado.colgar) {
-        await new Promise((_resolver, rechazar) => init?.signal?.addEventListener('abort', () => rechazar(new DOMException('aborted', 'AbortError'))))
-      }
-      const esDescomposicion = String(cuerpo.messages?.[0]?.content ?? '').startsWith('You are a query decomposition')
-      if ((estado.fallar === 'descomposicion' && esDescomposicion) || (estado.fallar === 'redaccion' && !esDescomposicion)) {
-        return Response.json({ error: { message: 'fallo simulado' } }, { status: 500 })
-      }
-      const salida = esDescomposicion ? { sub_queries: estado.subconsultas } : estado.redaccion()
-      return Response.json({ choices: [{ message: { content: JSON.stringify(salida) } }] })
-    }) as typeof fetch,
-  }
-  return estado
-}
-
 function sembrar(pinecone: PineconeSimulado) {
   const fragmentos = [
     ['business_rules', 'Hardship withdrawal rules: a hardship withdrawal requires an immediate and heavy financial need and the plan must allow hardship withdrawals.'],
@@ -61,7 +28,7 @@ function sembrar(pinecone: PineconeSimulado) {
   ] as const
   fragmentos.forEach(([tipo, contenido], indice) => {
     const id = `hardship_guide_chunk_${indice + 1}`
-    pinecone.registros.set(id, { _id: id, content: contenido, article_id: 'hardship_guide', article_title: 'Hardship withdrawal guide (synthetic)', chunk_type: tipo, chunk_index: indice + 1, visibleDesde: 0 })
+    pinecone.registros.set(id, { _id: id, content: contenido, article_id: 'hardship_guide', article_title: 'Hardship withdrawal guide (synthetic)', chunk_type: tipo, chunk_index: indice + 1, visibleDesde: 0, __ns: 'kb_articles' })
   })
 }
 
@@ -130,10 +97,11 @@ describe('Modo directo · knowledge-question con Pinecone y LLM, sin ForUsGuide'
     assert.deepEqual(cuerpo.retrieval.sub_queries, ['hardship withdrawal eligibility immediate heavy financial need'])
     assert.equal(cuerpo.retrieval.model, 'gpt-simulado')
 
-    // Dos búsquedas de texto (pregunta + subconsulta), nada más en Pinecone.
-    const busquedas = pinecone.peticiones.filter(item => item.ruta === '/records/namespaces/kb_articles/search')
-    assert.equal(busquedas.length, 2)
-    assert.equal(pinecone.peticiones.length, 2)
+    // Pregunta + subconsulta, cada una en el corpus base y en los documentos de
+    // Knowledge Desk: cuatro búsquedas de texto, nada más en Pinecone.
+    assert.equal(pinecone.peticiones.filter(item => item.ruta === '/records/namespaces/kb_articles/search').length, 2)
+    assert.equal(pinecone.peticiones.filter(item => item.ruta === '/records/namespaces/knowledge_desk_documents/search').length, 2)
+    assert.equal(pinecone.peticiones.length, 4)
     // Descomposición y redacción por chat; ningún embedding externo.
     assert.deepEqual(llm.llamadas.map(item => item.ruta), ['/v1/chat/completions', '/v1/chat/completions'])
     assert.ok(llm.llamadas.every(item => item.autorizacion === `Bearer ${CLAVE_LLM}`))
@@ -203,7 +171,7 @@ describe('Modo directo · knowledge-question con Pinecone y LLM, sin ForUsGuide'
     const { cuerpo } = await preguntar('What is a hardship withdrawal and who qualifies?')
     assert.equal(cuerpo.outcome, 'answered')
     assert.deepEqual(cuerpo.retrieval.sub_queries, [])
-    assert.equal(pinecone.peticiones.length, 1)
+    assert.equal(pinecone.peticiones.length, 2, 'una búsqueda en el corpus base y otra en los documentos')
   })
 
   it('un rechazo del proveedor en la redacción es AI_PROVIDER_ERROR', async () => {
@@ -242,13 +210,21 @@ describe('Modo directo · knowledge-question con Pinecone y LLM, sin ForUsGuide'
     assert.ok(pinecone.peticiones.every(item => !MUTACIONES.test(item.ruta)))
   })
 
-  it('no admite cargas, reemplazos ni eliminaciones y nunca escribe en Pinecone', async () => {
-    const carga = await app.inject({ method: 'POST', url: '/api/documentos', ...multipart('a.json', json(articuloSimple('kd_prueba', 'Prueba', 'Texto suficiente para un fragmento de prueba del modo directo.'))) })
-    assert.equal(carga.statusCode, 503)
-    assert.equal(carga.json().code, 'INDEX_NOT_CONFIGURED')
+  it('las cargas escriben solo en el namespace de documentos, nunca en el corpus base', async () => {
+    const carga = await app.inject({ method: 'POST', url: '/api/documentos', ...multipart('a.json', json(articuloSimple('prueba_directo', 'Prueba', 'Texto suficiente para un fragmento de prueba del modo directo.'))) })
+    assert.equal(carga.statusCode, 202)
+    await servicios.gestor.esperarInactividad()
     const documentos = (await app.inject({ method: 'GET', url: '/api/documentos' })).json()
-    assert.equal(documentos.indexacionConfigurada, false)
-    assert.ok(pinecone.peticiones.every(item => !MUTACIONES.test(item.ruta)))
+    assert.equal(documentos.indexacionConfigurada, true)
+    assert.equal(documentos.documentos[0].estado, 'indexado')
+    const mutaciones = pinecone.peticiones.filter(item => MUTACIONES.test(item.ruta))
+    assert.ok(mutaciones.length > 0)
+    assert.ok(mutaciones.every(item => item.namespace === 'knowledge_desk_documents'), 'ninguna mutación fuera del namespace de documentos')
+    assert.ok(pinecone.peticiones.every(item => item.namespace !== 'kb_articles' || item.ruta.endsWith('/search')), 'el corpus base solo se busca')
+    const eliminacion = await app.inject({ method: 'POST', url: `/api/documentos/${documentos.documentos[0].id}/eliminacion`, payload: { confirmado: true } })
+    assert.equal(eliminacion.json().operacion.resultado, 'exitoso')
+    assert.ok(pinecone.peticiones.filter(item => MUTACIONES.test(item.ruta)).every(item => item.namespace === 'knowledge_desk_documents'))
+    assert.equal([...pinecone.registros.values()].filter(registro => registro.__ns === 'kb_articles').length, 3, 'el corpus base sigue intacto')
   })
 
   it('el estado no expone claves ni el host de Pinecone', async () => {
@@ -256,8 +232,9 @@ describe('Modo directo · knowledge-question con Pinecone y LLM, sin ForUsGuide'
     const texto = respuesta.body
     assert.equal(respuesta.json().modo, 'directo')
     assert.equal(respuesta.json().consulta.motor, 'directo')
-    assert.equal(respuesta.json().indexacion.configurada, false)
+    assert.deepEqual(respuesta.json().indexacion, { configurada: true, destino: 'Pinecone · namespace knowledge_desk_documents' })
     assert.deepEqual(respuesta.json().busqueda, { destino: 'Pinecone · namespace kb_articles', soloLectura: true })
+    assert.deepEqual(respuesta.json().limites.formatos, ['json', 'pdf', 'docx', 'txt'])
     assert.deepEqual(respuesta.json().faltan, [])
     for (const secreto of [CLAVE_PINECONE, CLAVE_LLM, pinecone.url, 'llm.simulado']) assert.ok(!texto.includes(secreto))
   })
@@ -287,8 +264,10 @@ describe('Modo directo · configuración', () => {
   it('informa lo que falta sin pedir FORUSGUIDE_* ni modelo de embeddings', () => {
     const config = loadConfig(base)
     assert.deepEqual(capacidades(config), { consulta: false, indexacion: false, faltan: ['PINECONE_API_KEY', 'PINECONE_INDEX_HOST', 'KD_LLM_BASE_URL', 'KD_CHAT_MODEL'] })
+    // Con Pinecone configurado indexa, pero solo en el namespace de documentos.
     const completa = loadConfig({ ...base, PINECONE_API_KEY: 'k', PINECONE_INDEX_HOST: 'https://indice.example', KD_LLM_BASE_URL: 'https://llm.example/v1', KD_CHAT_MODEL: 'm', KD_EMBEDDINGS_MODEL: 'ignorado' })
-    assert.deepEqual(capacidades(completa), { consulta: true, indexacion: false, faltan: [] })
+    assert.deepEqual(capacidades(completa), { consulta: true, indexacion: true, faltan: [] })
+    assert.equal(completa.pinecone?.documentosNamespace, 'knowledge_desk_documents')
     assert.equal(completa.proveedor?.embeddingModel, '')
     assert.equal(completa.proveedor?.temperatura, null)
     assert.equal(completa.forusguide, null)
@@ -299,6 +278,23 @@ describe('Modo directo · configuración', () => {
     const publico = { KD_HOST: '0.0.0.0', KD_ACCESO_PUBLICO: 'true', PINECONE_API_KEY: 'k', PINECONE_INDEX_HOST: 'https://indice.example' }
     assert.doesNotThrow(() => loadConfig({ ...base, ...publico }))
     assert.throws(() => loadConfig({ ...base, ...publico, KD_MODO: 'forusguide' }), ConfigError)
+  })
+
+  it('el namespace de documentos nunca puede ser el namespace base', () => {
+    const conPinecone = { ...base, PINECONE_API_KEY: 'k', PINECONE_INDEX_HOST: 'https://indice.example' }
+    assert.throws(() => loadConfig({ ...conPinecone, KD_DOCUMENTOS_NAMESPACE: 'kb_articles' }), /distinto de PINECONE_NAMESPACE/)
+    assert.throws(() => loadConfig({ ...conPinecone, PINECONE_NAMESPACE: 'otro', KD_DOCUMENTOS_NAMESPACE: 'otro' }), /distinto de PINECONE_NAMESPACE/)
+    assert.throws(() => loadConfig({ ...conPinecone, KD_DOCUMENTOS_NAMESPACE: 'con espacios' }), /solo admite/)
+    assert.equal(loadConfig({ ...conPinecone, KD_DOCUMENTOS_NAMESPACE: 'kd_docs_qa' }).pinecone?.documentosNamespace, 'kd_docs_qa')
+    // Inversión: base en otro namespace y documentos apuntando al corpus compartido.
+    assert.throws(() => loadConfig({ ...conPinecone, PINECONE_NAMESPACE: 'otro_base', KD_DOCUMENTOS_NAMESPACE: 'kb_articles' }), /no puede ser kb_articles/)
+  })
+
+  it('el adaptador de escritura protege kb_articles aunque el base sea otro', () => {
+    const fetchApi = async () => Response.json({})
+    assert.throws(() => crearIndicePinecone({ apiKey: 'k', indexHost: 'http://pinecone.simulado', namespace: 'kb_articles' }, {
+      fetchApi, escrituraAcotada: { prefijo: 'kd_', namespacesProtegidos: ['otro_base', 'kb_articles'] },
+    }), /namespace protegido/)
   })
 
   it('el modo local conserva temperature 0', () => {

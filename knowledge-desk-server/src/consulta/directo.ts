@@ -44,8 +44,12 @@ async function descomponerConModelo(proveedor: Proveedor, pregunta: string, sign
   }
 }
 
+// Pinecone rechazó la búsqueda (4xx: solicitud) → error de recuperación; no
+// responde o falla (5xx, red) → base vectorial no disponible. Ninguno lleva el
+// cuerpo ni el mensaje de Pinecone.
 function errorBusqueda(error: unknown, signal: AbortSignal): KdError {
   if (signal.aborted || (error instanceof IndiceError && error.tipo === 'cancelado')) return new KdError('TIMEOUT', undefined, { origen: 'pinecone' })
+  if (error instanceof IndiceError && error.tipo === 'solicitud') return new KdError('RETRIEVAL_ERROR', undefined, { origen: 'pinecone' })
   return new KdError('VECTOR_DB_UNAVAILABLE', undefined, { origen: 'pinecone', tipo: error instanceof IndiceError ? error.tipo : 'desconocido' })
 }
 
@@ -53,7 +57,25 @@ function errorBusqueda(error: unknown, signal: AbortSignal): KdError {
 // Recupera del índice Pinecone compartido con búsqueda de texto (Pinecone
 // calcula los embeddings con su modelo integrado) y redacta con el proveedor
 // configurado. Las reglas de contexto, cobertura y citas son las de Knowledge Desk.
-export function crearMotorDirecto(deps: { proveedor: Proveedor; buscador: BuscadorCorpus; umbrales: Umbrales }): Motor {
+//
+// documentos: el namespace propio de Knowledge Desk. Cada consulta busca también
+// allí, excluyendo ANTES del corte topK las versiones que no pueden sustentar
+// respuestas (en proceso, fallidas, reemplazadas o retiradas). Después solo se
+// aceptan versiones servibles del registro: con almacenamiento efímero, tras un
+// reinicio pueden quedar en el índice vectores que el registro ya no conoce.
+export interface DocumentosDirecto { buscador: BuscadorCorpus; noServibles: () => string[]; servible: (articleId: string) => boolean }
+
+export function crearMotorDirecto(deps: { proveedor: Proveedor; buscador: BuscadorCorpus; documentos?: DocumentosDirecto | null; umbrales: Umbrales }): Motor {
+  async function buscarEnCorpus(texto: string, signal: AbortSignal): Promise<Coincidencia[]> {
+    const busquedas = [deps.buscador.buscar(texto, TOP_K_POR_CONSULTA, { signal })]
+    const documentos = deps.documentos
+    if (documentos) {
+      busquedas.push(documentos.buscador.buscar(texto, TOP_K_POR_CONSULTA, { signal, excluirArticulos: documentos.noServibles() })
+        .then(hits => hits.filter(hit => documentos.servible(String(hit.metadata.article_id ?? '')))))
+    }
+    return (await Promise.all(busquedas)).flat()
+  }
+
   return {
     nombre: 'directo',
 
@@ -61,10 +83,11 @@ export function crearMotorDirecto(deps: { proveedor: Proveedor; buscador: Buscad
       // 1. Subconsultas del modelo; la pregunta original siempre se busca también.
       const subconsultas = (await descomponerConModelo(deps.proveedor, pregunta, signal)).filter(item => item !== pregunta)
 
-      // 2. Búsquedas de texto en paralelo, sin filtro, como knowledge-question.
+      // 2. Búsquedas de texto en paralelo, sin filtro, como knowledge-question:
+      //    corpus base y, si existe, documentos de Knowledge Desk.
       let resultados: Coincidencia[][]
       try {
-        resultados = await Promise.all([pregunta, ...subconsultas].map(texto => deps.buscador.buscar(texto, TOP_K_POR_CONSULTA, { signal })))
+        resultados = await Promise.all([pregunta, ...subconsultas].map(texto => buscarEnCorpus(texto, signal)))
       } catch (error) {
         throw errorBusqueda(error, signal)
       }

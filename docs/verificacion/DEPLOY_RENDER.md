@@ -27,6 +27,7 @@ publicado sigue como indica la tabla anterior. Para aplicarlo, en el panel de Re
 | `PINECONE_API_KEY` | secreto (`sync: false`), clave con lectura del índice `kb-articles-production` |
 | `PINECONE_INDEX_HOST` | `sync: false`, host del índice `kb-articles-production` en la consola de Pinecone (`https://…svc.aped-4627-b74a.pinecone.io`) |
 | `PINECONE_NAMESPACE` | `kb_articles` |
+| `KD_DOCUMENTOS_NAMESPACE` | `knowledge_desk_documents` (documentos de Knowledge Desk; nunca `kb_articles`) |
 | `KD_LLM_BASE_URL` | `https://api.openai.com/v1` |
 | `KD_LLM_API_KEY` | secreto (`sync: false`) |
 | `KD_CHAT_MODEL` | `gpt-5.5` |
@@ -34,9 +35,20 @@ publicado sigue como indica la tabla anterior. Para aplicarlo, en el panel de Re
 
 Se pueden retirar `FORUSGUIDE_API_URL`, `FORUSGUIDE_API_KEY` y
 `FORUSGUIDE_COMPROBAR_SALUD`: el modo directo no los lee. Con `KD_ACCESO_PUBLICO=true`
-el modo directo admite las claves de Pinecone porque solo busca: el adaptador rechaza
-upsert, listado y borrado antes de llamar a Pinecone, y el servidor responde
-`INDEX_NOT_CONFIGURED` a cargas, reemplazos y eliminaciones.
+el modo directo admite las claves de Pinecone: en `kb_articles` solo busca (el
+adaptador rechaza upsert, listado y borrado antes de llamar a Pinecone) y los
+documentos cargados se escriben solo en `knowledge_desk_documents`, con IDs `kd_…`.
+En el plan free el registro está en `/tmp`: tras un reinicio los documentos cargados
+dejan de servirse y hay que volver a cargarlos. Con acceso público, cualquiera con la
+URL puede cargar, reemplazar o eliminar cualquier documento de Knowledge Desk: no hay
+pertenencia por usuario. Cada consulta hace de 2 a 8 búsquedas en Pinecone (pregunta
+y hasta 3 subconsultas, en los 2 namespaces) y 2 llamadas al modelo.
+
+Prueba en producción tras aplicarlo: `GET /api/estado` (modo `directo`, `faltan` vacío,
+`indexacion.destino` con `knowledge_desk_documents`, formatos json/pdf/docx/txt); una
+consulta sustantiva; cargar un TXT sintético, esperar Indexado, preguntar por su
+contenido y comprobar que aparece como fuente `document`; eliminarlo y confirmar
+`exitoso`; un PNG debe responder 415 `UNSUPPORTED_FORMAT`.
 
 ## Restricciones de esta vista previa
 

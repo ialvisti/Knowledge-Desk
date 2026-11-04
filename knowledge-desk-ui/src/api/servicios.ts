@@ -5,8 +5,13 @@ import type { ArticuloExterno, ContratoConsulta, DetalleDocumento, DocumentoResu
 export const MIN_PREGUNTA = 10
 export const MAX_PREGUNTA = 100
 export const MAX_ARCHIVO = 50 * 1024 * 1024
-// Knowledge Desk administra artículos de conocimiento kb_article_v2: JSON puro.
+// Formatos por defecto. El servidor declara los suyos en /api/estado
+// (limites.formatos): artículos JSON kb_article_v2 y, si los admite, PDF, DOCX y TXT.
 export const FORMATOS = ['json'] as const
+
+const extensionDe = (nombre: string) => (nombre.includes('.') ? nombre.slice(nombre.lastIndexOf('.') + 1).toLowerCase() : '')
+const soloJson = (formatos: readonly string[]) => formatos.length === 1 && formatos[0] === 'json'
+export const aceptarFormatos = (formatos: readonly string[]) => formatos.map(formato => (formato === 'json' ? '.json,application/json' : `.${formato}`)).join(',')
 
 export const obtenerEstado = () => pedir<EstadoServidor>('/api/estado')
 export const obtenerEjemplos = () => pedir<Ejemplos>('/api/ejemplos')
@@ -69,12 +74,15 @@ const mb = (bytes: number) => Math.round(bytes / 1024 / 1024)
 // Validación previa en el navegador para avisar al instante. El servidor vuelve
 // a validar el archivo y el esquema del artículo: esta comprobación no sustituye
 // a la suya.
-export function validarArchivo(archivo: Pick<File, 'name' | 'size'>, maxBytes = MAX_ARCHIVO): string | null {
-  const extension = archivo.name.includes('.') ? archivo.name.slice(archivo.name.lastIndexOf('.') + 1).toLowerCase() : ''
-  if (!(FORMATOS as readonly string[]).includes(extension)) return `${archivo.name}: formato no admitido. Carga un artículo de conocimiento en JSON (.json).`
+export function validarArchivo(archivo: Pick<File, 'name' | 'size'>, maxBytes = MAX_ARCHIVO, formatos: readonly string[] = FORMATOS): string | null {
+  if (!formatos.includes(extensionDe(archivo.name))) {
+    return soloJson(formatos)
+      ? `${archivo.name}: formato no admitido. Carga un artículo de conocimiento en JSON (.json).`
+      : `${archivo.name}: formato no admitido. Formatos admitidos: artículo JSON (kb_article_v2), PDF con texto, DOCX y TXT.`
+  }
   if (archivo.size === 0) return `${archivo.name}: el archivo está vacío.`
   if (archivo.size > maxBytes) return `${archivo.name}: supera el límite de ${mb(maxBytes)} MB.`
   return null
 }
 
-export const textoLimite = (maxBytes = MAX_ARCHIVO) => `JSON (Max ${mb(maxBytes)}MB)`
+export const textoLimite = (maxBytes = MAX_ARCHIVO, formatos: readonly string[] = FORMATOS) => `${formatos.map(formato => formato.toUpperCase()).join(', ')} (Max ${mb(maxBytes)}MB)`

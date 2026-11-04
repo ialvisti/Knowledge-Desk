@@ -149,10 +149,17 @@ Reglas que el servidor garantiza:
   revisión menor que la conocida, repite la consulta (como máximo 2 veces) y, si
   persiste, informa `CORPUS_CHANGED` sin mostrar la respuesta.
 
-## 2. Artículos de conocimiento JSON (HU07–HU09)
+## 2. Documentos: artículos JSON, PDF, DOCX y TXT (HU07–HU09)
 
-Knowledge Desk administra **solo** artículos JSON kb_article_v2, el formato de los
-artículos de ForUsGuide:
+Formatos admitidos: artículos JSON kb_article_v2, PDF con texto (sin OCR), DOCX y TXT
+en UTF-8. La extensión y la firma del contenido deben coincidir; una imagen (PNG,
+JPEG, GIF…) u otro formato responde `415 UNSUPPORTED_FORMAT` y un archivo dañado,
+protegido o sin texto útil `422 INVALID_DOCUMENT`, en ambos casos sin registrar,
+guardar ni indexar nada. De un PDF, DOCX o TXT el servidor extrae el texto, lo
+segmenta en bloques y lo clasifica (`kd-clasificacion-v1`); el detalle del documento
+incluye `version.texto` y `GET /api/documentos/:id/texto` devuelve el texto extraído.
+
+Los artículos JSON siguen el formato de los artículos de ForUsGuide:
 
 ```jsonc
 {

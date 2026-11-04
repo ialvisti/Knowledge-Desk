@@ -35,7 +35,7 @@ const fila = (page: Page, nombre: string) => page.locator('tbody tr').filter({ h
 
 async function cargar(page: Page, ...archivos: ReturnType<typeof archivo>[]) {
   await page.goto('/documentos')
-  await page.getByLabel('Seleccionar artículos JSON').setInputFiles(archivos)
+  await page.getByLabel('Seleccionar documentos').setInputFiles(archivos)
 }
 
 test('HU07: un artículo JSON válido se indexa de verdad y queda Indexado con sus fragmentos', async ({ page }) => {
@@ -47,8 +47,9 @@ test('HU07: un artículo JSON válido se indexa de verdad y queda Indexado con s
 })
 
 test('HU07: JSON mal formado, otro formato y artículo sin contenido indexable se rechazan o quedan en Error', async ({ page }) => {
-  await cargar(page, archivo('Roto.json', '{"metadata": {'), { name: 'Manual.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') })
-  await expect(page.getByRole('alert').filter({ hasText: 'Manual.pdf: formato no admitido' })).toBeVisible()
+  // PDF, DOCX y TXT son formatos aprobados; una imagen no.
+  await cargar(page, archivo('Roto.json', '{"metadata": {'), { name: 'Diagrama.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') })
+  await expect(page.getByRole('alert').filter({ hasText: 'Diagrama.png: formato no admitido' })).toBeVisible()
   await expect(page.getByRole('alert').filter({ hasText: /No fue posible cargar Roto\.json\. Roto\.json: no es JSON válido/ })).toBeVisible()
   await expect(fila(page, 'Roto.json')).toHaveCount(0)
 

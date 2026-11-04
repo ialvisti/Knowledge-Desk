@@ -52,8 +52,9 @@ Navegador ── mismo origen ──▶ Servidor de Knowledge Desk (Node 24 + Fa
                                │
                                ├─ modo forusguide ─▶ ForUsGuide POST /api/v1/knowledge-question (X-API-Key)
                                │                     + Pinecone, mismo índice y namespace
-                               ├─ modo directo ────▶ Pinecone (búsqueda de texto, SOLO LECTURA, embeddings
-                               │                     integrados) + proveedor OpenAI-compatible (chat)
+                               ├─ modo directo ────▶ Pinecone: namespace base kb_articles (SOLO LECTURA) +
+                               │                     namespace knowledge_desk_documents (documentos de KD),
+                               │                     embeddings integrados + proveedor OpenAI-compatible (chat)
                                └─ modo local ──────▶ proveedor OpenAI-compatible (embeddings y chat)
                                                      + índice vectorial propio en KD_DATA_DIR
 ```
@@ -76,7 +77,7 @@ Navegador ── mismo origen ──▶ Servidor de Knowledge Desk (Node 24 + Fa
 | Modo (`KD_MODO`) | Consulta | Artículos JSON | Para qué |
 | --- | --- | --- | --- |
 | `forusguide` | ForUsGuide recupera, arma el contexto y redacta. Knowledge Desk valida, aplica la cobertura y bloquea respuestas con versiones no servibles | Se indexan en el **mismo** índice y namespace de Pinecone que lee ForUsGuide | Usar el corpus y el motor de ForUsGuide |
-| `directo` | El pipeline knowledge-question de ForUsGuide reproducido en Knowledge Desk, **sin ForUsGuide**: subconsultas con el modelo, búsqueda de texto en el índice Pinecone compartido (15 fragmentos por consulta, embeddings integrados de Pinecone), contexto diverso (6 por artículo, tipos prioritarios), redacción y validación de citas de Knowledge Desk | **No se indexa**: el adaptador de Pinecone es de solo lectura y el gestor no recibe índice | Consultar el corpus de ForUsGuide sin depender de su API, n8n ni Cloud Run |
+| `directo` | El pipeline knowledge-question de ForUsGuide reproducido en Knowledge Desk, **sin ForUsGuide**: subconsultas con el modelo, búsqueda de texto en el índice Pinecone compartido (15 fragmentos por consulta, embeddings integrados de Pinecone), contexto diverso (6 por artículo, tipos prioritarios), redacción y validación de citas de Knowledge Desk | JSON kb_article_v2, PDF con texto, DOCX y TXT se indexan **solo** en el namespace propio `KD_DOCUMENTOS_NAMESPACE` (por defecto `knowledge_desk_documents`). El namespace base y `kb_articles` son de solo lectura; el adaptador de escritura se niega a operar sobre ellos y solo gestiona IDs `kd_…` | Consultar el corpus de ForUsGuide más los documentos cargados en Knowledge Desk, sin depender de su API, n8n ni Cloud Run |
 | `local` | Todo el flujo en Knowledge Desk: búsqueda semántica, subpreguntas, deduplicación previa, contexto solo con versiones servibles y validación de citas | Índice propio en disco | Corpus propio con cualquier proveedor OpenAI-compatible |
 | sin valor | `INTEGRATION_NOT_CONFIGURED`: nunca inventa respuestas | No se indexa | Arranque sin configuración |
 | simulado (`scripts\simulado.ps1`) | Servidor real contra simuladores locales de ForUsGuide y Pinecone. La interfaz avisa "Modo demostración" | Pipeline real contra el índice simulado | Demostración y pruebas, sin Internet |
@@ -123,11 +124,20 @@ procesos en segundo plano corren en la misma consola y al terminar se detiene so
    - `KD_MODO=directo`: rellena `PINECONE_API_KEY`, `PINECONE_INDEX_HOST` y
      `PINECONE_NAMESPACE` (`kb_articles`), y `KD_LLM_BASE_URL`
      (`https://api.openai.com/v1`), `KD_LLM_API_KEY` y `KD_CHAT_MODEL` (`gpt-5.5`, el
-     modelo de ForUsGuide). No hacen falta `FORUSGUIDE_*` ni `KD_EMBEDDINGS_MODEL`. La
-     clave de Pinecone solo se usa para buscar: cargar, reemplazar o eliminar
-     responden `INDEX_NOT_CONFIGURED` y el adaptador rechaza upsert, listado y borrado
-     antes de llamar a Pinecone. `POST /api/v1/knowledge-question` es un alias de
-     `POST /api/consulta` con el mismo acceso, validación y contrato de Knowledge Desk.
+     modelo de ForUsGuide). No hacen falta `FORUSGUIDE_*` ni `KD_EMBEDDINGS_MODEL`. En
+     el namespace base la clave de Pinecone solo busca. Los documentos cargados se
+     indexan en `KD_DOCUMENTOS_NAMESPACE` (por defecto `knowledge_desk_documents`), que
+     debe ser distinto del base y de `kb_articles`. `POST /api/v1/knowledge-question`
+     es un alias de `POST /api/consulta` con el mismo acceso, validación y contrato.
+
+Documentos en el servidor (todos los modos con indexación): artículos JSON
+kb_article_v2, PDF con texto (sin OCR), DOCX y TXT en UTF-8. El texto se extrae en el
+servidor (pdf.js y la lectura del XML de Word), se segmenta en bloques y se clasifica
+con `kd-clasificacion-v1` (faqs, steps, definitions, eligibility, fees_details,
+business_rules, overview; reglas en `knowledge-desk-server/src/documents/texto.ts`). Se
+conservan el original byte a byte con su SHA-256, el texto extraído
+(`GET /api/documentos/:id/texto`) y los fragmentos con los bloques de origen. Una imagen
+u otro formato se rechaza con `UNSUPPORTED_FORMAT` antes de guardar nada.
    - `KD_MODO=local`: rellena `KD_LLM_BASE_URL` (por ejemplo `https://api.openai.com/v1`
      o un Ollama local), `KD_LLM_API_KEY`, `KD_EMBEDDINGS_MODEL` y `KD_CHAT_MODEL`.
 3. Arranca:
@@ -152,7 +162,8 @@ Cada consulta, carga o reemplazo con servicios reales consume llamadas al modelo
   - Un proxy de identidad corporativo: `KD_IDENTIDAD_HEADER` + `KD_PROXY_SECRETO`.
   - `KD_ACCESO_PUBLICO=true`: acceso directo sin inicio de sesión, solo para una vista
     previa pública decidida de forma explícita.
-    - Cualquiera con la URL consulta y carga, reemplaza o elimina artículos.
+    - Cualquiera con la URL consulta y carga, reemplaza o elimina cualquier documento:
+      no hay pertenencia por usuario. En modo directo nunca se escribe en `kb_articles`.
     - Las operaciones se registran como "Acceso público".
     - No se combina con las dos opciones anteriores ni con `KD_OPERADORES`: si se
       mezclan, el servidor no arranca.

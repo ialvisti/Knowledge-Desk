@@ -102,7 +102,7 @@ export interface DocumentoResumen {
   fechaCarga: string
   fragmentos: number | null
   versionActiva: string | null
-  tipo: 'json'
+  tipo: 'json' | 'pdf' | 'docx' | 'txt'
   bytes: number
   // Identidad canónica del artículo (metadata.article_id y metadata.title).
   articuloId: string
@@ -140,7 +140,7 @@ export interface DetalleDocumento {
     version: string
     estado: 'procesando' | 'activa' | 'fallida' | 'reemplazada' | 'retirada'
     nombre: string
-    tipo: 'json'
+    tipo: 'json' | 'pdf' | 'docx' | 'txt'
     bytes: number
     sha256: string
     cargadoEn: string
@@ -148,6 +148,8 @@ export interface DetalleDocumento {
     articulo: IdentidadArticulo
     error: { etapa: string; mensaje: string } | null
     archivoUrl: string | null
+    // PDF, DOCX y TXT: el texto extraído en el servidor, que es lo que se fragmentó.
+    texto?: { caracteres: number; bloques: number; url: string } | null
   }
   fragmentos: FragmentoIndexado[]
   versiones: { version: string; estado: string; nombre: string; cargadoEn: string; fragmentos: number }[]

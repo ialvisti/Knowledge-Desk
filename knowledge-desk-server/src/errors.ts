@@ -16,6 +16,7 @@ export type ErrorCode =
   | 'INDEX_NOT_CONFIGURED'
   | 'UNSUPPORTED_FORMAT'
   | 'INVALID_ARTICLE'
+  | 'INVALID_DOCUMENT'
   | 'DUPLICATE_ARTICLE'
   | 'ARTICLE_MISMATCH'
   | 'EMPTY_FILE'
@@ -46,8 +47,9 @@ const CATALOGO: Record<ErrorCode, Definicion> = {
   INTEGRATION_NOT_CONFIGURED: { status: 503, retryable: false, message: 'El servidor no tiene configurado un motor de consulta. Revisa la configuración de Knowledge Desk.' },
   CONTENT_UNAVAILABLE: { status: 409, retryable: true, message: 'La respuesta se apoyaba en un documento que está en proceso, bloqueado o retirado, así que no se presenta. Inténtalo de nuevo cuando termine la operación.' },
   INDEX_NOT_CONFIGURED: { status: 503, retryable: false, message: 'No es posible indexar documentos: la integración con el índice no está configurada.' },
-  UNSUPPORTED_FORMAT: { status: 415, retryable: false, message: 'Formato no admitido. Carga un artículo de conocimiento en JSON (.json).' },
+  UNSUPPORTED_FORMAT: { status: 415, retryable: false, message: 'Formato no admitido. Carga un artículo JSON (kb_article_v2), un PDF con texto, un DOCX o un TXT.' },
   INVALID_ARTICLE: { status: 422, retryable: false, message: 'El archivo no es un artículo de conocimiento kb_article_v2 válido.' },
+  INVALID_DOCUMENT: { status: 422, retryable: false, message: 'No se pudo leer el texto del archivo: está dañado, protegido o no tiene texto útil.' },
   DUPLICATE_ARTICLE: { status: 409, retryable: false, message: 'Ese artículo ya existe en el corpus. Usa Editar para reemplazarlo.' },
   ARTICLE_MISMATCH: { status: 409, retryable: false, message: 'El nuevo archivo corresponde a otro artículo. Para un artículo distinto usa Cargar documento.' },
   EMPTY_FILE: { status: 400, retryable: false, message: 'El archivo está vacío.' },

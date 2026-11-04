@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url'
 //  - directo: el pipeline knowledge-question de ForUsGuide reproducido aquí,
 //    sin ForUsGuide: búsqueda de texto en el índice Pinecone compartido (solo
 //    lectura, embeddings integrados) y redacción con un proveedor
-//    OpenAI-compatible. Nunca indexa, borra ni siembra en ese índice.
+//    OpenAI-compatible. Nunca indexa, borra ni siembra en el namespace base.
+//    Los documentos de Knowledge Desk se indexan en OTRO namespace del mismo
+//    índice (KD_DOCUMENTOS_NAMESPACE) y la consulta busca en ambos.
 //  - sin_configurar: el servidor arranca, pero informa que no puede consultar ni
 //    indexar. Nunca inventa respuestas ni estados.
 export type Modo = 'forusguide' | 'local' | 'directo' | 'sin_configurar'
@@ -18,7 +20,14 @@ export type Modo = 'forusguide' | 'local' | 'directo' | 'sin_configurar'
 // comprobarSalud: antes de cada consulta, un GET /health que espera el arranque
 // normal del servicio (FORUSGUIDE_COMPROBAR_SALUD; desactivado por defecto).
 export interface ForUsGuideConfig { url: string; apiKey: string | null; comprobarSalud?: boolean }
-export interface PineconeConfig { apiKey: string; indexHost: string; namespace: string }
+// documentosNamespace: solo modo directo. Namespace propio de los documentos de
+// Knowledge Desk, distinto del namespace base de solo lectura.
+export interface PineconeConfig { apiKey: string; indexHost: string; namespace: string; documentosNamespace?: string }
+
+export const DOCUMENTOS_NAMESPACE_DEFECTO = 'knowledge_desk_documents'
+// Namespace del corpus compartido de ForUsGuide. Está protegido SIEMPRE contra
+// escritura, aunque PINECONE_NAMESPACE apunte a otro namespace.
+export const NAMESPACE_COMPARTIDO = 'kb_articles'
 // chatReasoningEffort: solo para modelos de razonamiento que aceptan temperature 0
 // únicamente con reasoning_effort "none". Sin valor, el cuerpo del chat no cambia.
 // temperatura: 0 en modo local; null en directo, donde se omite porque los
@@ -129,7 +138,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
 
   // Acceso público: solo con KD_ACCESO_PUBLICO=true, decidido de forma explícita
-  // para una vista previa. Cualquiera con la URL consulta y administra artículos.
+  // para una vista previa. Cualquiera con la URL consulta y administra TODOS los
+  // documentos de Knowledge Desk: no hay pertenencia por usuario.
   // No se combina con credenciales, proxy ni lista de operadores: el acceso
   // público no identifica a nadie y mezclarlo daría identidades engañosas.
   const publicoRaw = texto(env, 'KD_ACCESO_PUBLICO')
@@ -145,9 +155,23 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     if (modo === 'forusguide' && escritura.length) {
       throw new ConfigError(`KD_ACCESO_PUBLICO=true con KD_MODO=forusguide no admite ${escritura.join(', ')}: la vista pública solo consulta y no escribe en el índice compartido`)
     }
-    // En modo directo las claves de Pinecone son de lectura por construcción: el
-    // adaptador de ese modo rechaza upsert, listado y borrado, y el gestor de
-    // documentos no recibe índice. Por eso aquí sí se admiten.
+    // En modo directo sí se admiten: el namespace base y kb_articles son de solo
+    // lectura (el adaptador rechaza upsert, listado y borrado) y el gestor de
+    // documentos escribe solo en KD_DOCUMENTOS_NAMESPACE, con IDs "kd_…".
+  }
+
+  // Namespaces de Pinecone. En modo directo los documentos de Knowledge Desk
+  // nunca pueden escribirse en el namespace base compartido.
+  const namespaceBase = texto(env, 'PINECONE_NAMESPACE') ?? 'kb_articles'
+  const documentosNamespace = texto(env, 'KD_DOCUMENTOS_NAMESPACE') ?? DOCUMENTOS_NAMESPACE_DEFECTO
+  for (const [nombre, valor] of [['PINECONE_NAMESPACE', namespaceBase], ['KD_DOCUMENTOS_NAMESPACE', documentosNamespace]] as const) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(valor)) throw new ConfigError(`${nombre} solo admite letras, números, "_" y "-" (máximo 64)`)
+  }
+  if (modo === 'directo' && documentosNamespace === namespaceBase) {
+    throw new ConfigError('KD_DOCUMENTOS_NAMESPACE debe ser distinto de PINECONE_NAMESPACE: el namespace base es de solo lectura')
+  }
+  if (modo === 'directo' && documentosNamespace === NAMESPACE_COMPARTIDO) {
+    throw new ConfigError(`KD_DOCUMENTOS_NAMESPACE no puede ser ${NAMESPACE_COMPARTIDO}: es el corpus compartido de ForUsGuide y es de solo lectura`)
   }
 
   const host = texto(env, 'KD_HOST') ?? (env.RENDER ? '0.0.0.0' : '127.0.0.1')
@@ -167,7 +191,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     consultaTimeoutMs,
     forusguide: modo === 'forusguide' && forusguideUrl ? { url: forusguideUrl, apiKey: texto(env, 'FORUSGUIDE_API_KEY'), comprobarSalud: comprobarSalud === 'true' } : null,
     pinecone: (modo === 'forusguide' || modo === 'directo') && pineconeKey && pineconeHost
-      ? { apiKey: pineconeKey, indexHost: pineconeHost, namespace: texto(env, 'PINECONE_NAMESPACE') ?? 'kb_articles' }
+      ? { apiKey: pineconeKey, indexHost: pineconeHost, namespace: namespaceBase, ...(modo === 'directo' ? { documentosNamespace } : {}) }
       : null,
     proveedor: (modo === 'local' || modo === 'directo') && proveedorUrl
       ? {
@@ -212,8 +236,8 @@ export function capacidades(config: Config) {
     : config.modo === 'directo'
       ? config.pinecone !== null && config.proveedor !== null && Boolean(config.proveedor.chatModel)
       : config.modo === 'local' && config.proveedor !== null && Boolean(config.proveedor.chatModel) && Boolean(config.proveedor.embeddingModel)
-  // El modo directo nunca indexa: el índice compartido es de solo lectura.
-  const indexacion = config.modo === 'forusguide'
+  // El modo directo indexa SOLO en su namespace de documentos; el base es de lectura.
+  const indexacion = config.modo === 'forusguide' || config.modo === 'directo'
     ? config.pinecone !== null
     : config.modo === 'local' && config.proveedor !== null && Boolean(config.proveedor.embeddingModel)
   const faltan: string[] = []

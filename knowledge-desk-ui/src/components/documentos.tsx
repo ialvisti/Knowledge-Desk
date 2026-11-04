@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../api/cliente'
-import { eliminarDocumento, reemplazarDocumento, validarArchivo } from '../api/servicios'
+import { FORMATOS, aceptarFormatos, eliminarDocumento, reemplazarDocumento, validarArchivo } from '../api/servicios'
 import { useOperacion } from '../hooks/useOperacion'
 import type { DocumentoResumen, Operacion } from '../api/tipos'
 import { fechaCorta, fechaHora, fechaTexto } from '../lib/formato'
@@ -28,11 +28,11 @@ const RESULTADOS: Record<Operacion['resultado'], string> = {
   en_curso: 'En curso', exitoso: 'Exitoso', fallido: 'Fallido', fallido_parcial: 'Fallido - parcial',
 }
 
-// Artículo de conocimiento en JSON: la misma insignia en la lista, los
-// diálogos y el visor.
-export function IconoArchivo({ grande = false }: { grande?: boolean }) {
+// Insignia del formato del original (JSON, PDF, DOCX o TXT): la misma en la
+// lista, los diálogos y el visor.
+export function IconoArchivo({ grande = false, tipo = 'json' }: { grande?: boolean; tipo?: string }) {
   return <span className={`file-badge file-badge-json ${grande ? 'file-badge-large' : ''}`} aria-hidden="true">
-    <Icon name="draft" /><span className="file-badge-label">JSON</span>
+    <Icon name="draft" /><span className="file-badge-label">{tipo.toUpperCase()}</span>
   </span>
 }
 
@@ -78,7 +78,9 @@ function Pasos({ operacion }: { operacion: Operacion | null }) {
 
 // --- Reemplazo (HU08, imágenes "Vista de edición", "Mensaje de éxito" y "error al reemplazar")
 
-export function DialogoReemplazo({ documento, maxBytes, onClose, onCambio }: { documento: DocumentoResumen; maxBytes?: number; onClose: () => void; onCambio: () => void }) {
+export function DialogoReemplazo({ documento, maxBytes, formatos: admitidos = FORMATOS, onClose, onCambio }: { documento: DocumentoResumen; maxBytes?: number; formatos?: readonly string[]; onClose: () => void; onCambio: () => void }) {
+  // Un artículo JSON se reemplaza por JSON; un PDF, DOCX o TXT, por otro de esos formatos.
+  const formatos = documento.tipo === 'json' ? ['json'] : admitidos.filter(formato => formato !== 'json')
   const [archivo, setArchivo] = useState<File | null>(null)
   const [confirmado, setConfirmado] = useState(false)
   const [errorArchivo, setErrorArchivo] = useState<string | null>(null)
@@ -148,7 +150,7 @@ export function DialogoReemplazo({ documento, maxBytes, onClose, onCambio }: { d
     </div>
     <p className="modal-label">Documento que se reemplazará</p>
     <div className="doc-card">
-      <IconoArchivo />
+      <IconoArchivo tipo={documento.tipo} />
       <div>
         <strong>{documento.titulo}</strong>
         <span>{documento.id}. {version ? `v${version}` : 'sin versión activa'}. cargado el {fechaTexto(documento.fechaCarga)}. {activos} fragmentos activos</span>
@@ -158,12 +160,12 @@ export function DialogoReemplazo({ documento, maxBytes, onClose, onCambio }: { d
     <div className="doc-card doc-card-new">
       <Icon name="draft" />
       <strong>{archivo?.name ?? 'Ningún archivo seleccionado'}</strong>
-      <button type="button" className="button-change" disabled={enCurso} title={`Nueva versión del artículo ${documento.articuloId} en JSON kb_article_v2`} onClick={() => input.current?.click()}>{archivo ? 'Cambiar' : 'Seleccionar'}</button>
-      <input ref={input} type="file" className="sr-only" tabIndex={-1} aria-label="Seleccionar el nuevo artículo JSON" accept=".json,application/json" onChange={event => {
+      <button type="button" className="button-change" disabled={enCurso} title={documento.tipo === 'json' ? `Nueva versión del artículo ${documento.articuloId} en JSON kb_article_v2` : `Nueva versión del documento ${documento.articuloId} en PDF, DOCX o TXT`} onClick={() => input.current?.click()}>{archivo ? 'Cambiar' : 'Seleccionar'}</button>
+      <input ref={input} type="file" className="sr-only" tabIndex={-1} aria-label={documento.tipo === 'json' ? 'Seleccionar el nuevo artículo JSON' : 'Seleccionar el nuevo documento'} accept={aceptarFormatos(formatos)} onChange={event => {
         const elegido = event.target.files?.[0] ?? null
         event.target.value = ''
         if (!elegido) return
-        const problema = validarArchivo(elegido, maxBytes)
+        const problema = validarArchivo(elegido, maxBytes, formatos)
         setErrorArchivo(problema)
         setArchivo(problema ? null : elegido)
       }} />

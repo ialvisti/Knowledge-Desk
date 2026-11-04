@@ -6,7 +6,11 @@ import { similitud } from './similitud.ts'
 // el SDK oficial (upsert NDJSON, list, delete y search). Permite inyectar
 // fallos y retraso de visibilidad (consistencia eventual) para probar rollback,
 // fallo parcial y verificación antes de publicar.
-export interface Registro { _id: string; content: string; [campo: string]: unknown }
+// __ns: namespace del registro. Los que se suben por la API lo reciben de la
+// ruta; los sembrados a mano sin __ns son visibles en cualquier namespace.
+export interface Registro { _id: string; content: string; __ns?: string; [campo: string]: unknown }
+
+const enNamespace = (registro: Registro, namespace: string | null) => !registro.__ns || namespace === null || registro.__ns === namespace
 
 export interface Fallos {
   // Falla con 500 cualquier upsert que contenga un ID con este prefijo.
@@ -24,7 +28,7 @@ export interface PineconeSimulado {
   apiKeys: string[]
   registros: Map<string, Registro & { visibleDesde: number }>
   fallos: Fallos
-  peticiones: { metodo: string; ruta: string }[]
+  peticiones: { metodo: string; ruta: string; namespace: string | null; ids?: string[] }[]
   cerrar(): Promise<void>
 }
 
@@ -49,7 +53,9 @@ export async function iniciarPineconeSimulado(puerto = 0): Promise<PineconeSimul
   const estado: Omit<PineconeSimulado, 'url' | 'cerrar'> = { apiKeys: [], registros: new Map(), fallos: {}, peticiones: [] }
   const server: Server = createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost')
-    estado.peticiones.push({ metodo: request.method ?? '', ruta: url.pathname })
+    const namespaceRuta = url.pathname.match(/^\/records\/namespaces\/([^/]+)\//)?.[1]
+    const peticion: PineconeSimulado['peticiones'][number] = { metodo: request.method ?? '', ruta: url.pathname, namespace: namespaceRuta ? decodeURIComponent(namespaceRuta) : url.searchParams.get('namespace') }
+    estado.peticiones.push(peticion)
     const responder = (status: number, datos: unknown) => {
       response.writeHead(status, { 'content-type': 'application/json' })
       response.end(JSON.stringify(datos))
@@ -64,7 +70,8 @@ export async function iniciarPineconeSimulado(puerto = 0): Promise<PineconeSimul
     const ahora = Date.now()
 
     if (request.method === 'POST' && /^\/records\/namespaces\/[^/]+\/upsert$/.test(url.pathname)) {
-      const lineas = (await cuerpo(request)).split('\n').filter(Boolean).map(linea => JSON.parse(linea) as Registro)
+      const lineas = (await cuerpo(request)).split('\n').filter(Boolean).map(linea => ({ ...(JSON.parse(linea) as Registro), __ns: peticion.namespace ?? '' }))
+      peticion.ids = lineas.map(registro => registro._id)
       if (estado.fallos.upsertFalla && lineas.some(registro => registro._id.startsWith(estado.fallos.upsertFalla!))) {
         return responder(500, { error: { code: 'INTERNAL', message: 'fallo simulado de upsert' } })
       }
@@ -77,17 +84,19 @@ export async function iniciarPineconeSimulado(puerto = 0): Promise<PineconeSimul
       const prefijo = url.searchParams.get('prefix') ?? ''
       const limite = Number(url.searchParams.get('limit') ?? 100)
       const desde = Number(url.searchParams.get('paginationToken') ?? 0)
-      const ids = [...estado.registros.values()].filter(registro => registro._id.startsWith(prefijo) && registro.visibleDesde <= ahora).map(registro => registro._id).sort()
+      const ids = [...estado.registros.values()].filter(registro => registro._id.startsWith(prefijo) && registro.visibleDesde <= ahora && enNamespace(registro, peticion.namespace)).map(registro => registro._id).sort()
       const pagina = ids.slice(desde, desde + limite)
       const siguiente = desde + limite < ids.length ? String(desde + limite) : undefined
       return responder(200, { vectors: pagina.map(id => ({ id })), pagination: siguiente ? { next: siguiente } : {}, namespace: 'simulado', usage: { readUnits: 1 } })
     }
 
     if (request.method === 'POST' && url.pathname === '/vectors/delete') {
-      const { ids } = JSON.parse(await cuerpo(request)) as { ids: string[] }
+      const { ids, namespace } = JSON.parse(await cuerpo(request)) as { ids: string[]; namespace?: string }
+      peticion.namespace = namespace ?? null
+      peticion.ids = ids
       // Los que quedan son registros que EXISTEN: pedir borrar un ID inexistente
       // no cuenta como embedding residual.
-      const existentes = ids.filter(id => estado.registros.has(id))
+      const existentes = ids.filter(id => estado.registros.has(id) && enNamespace(estado.registros.get(id)!, peticion.namespace))
       const deja = estado.fallos.borradoDeja ?? 0
       existentes.slice(0, Math.max(0, existentes.length - deja)).forEach(id => estado.registros.delete(id))
       return responder(200, {})
@@ -96,13 +105,13 @@ export async function iniciarPineconeSimulado(puerto = 0): Promise<PineconeSimul
     if (request.method === 'POST' && /^\/records\/namespaces\/[^/]+\/search$/.test(url.pathname)) {
       const { query } = JSON.parse(await cuerpo(request)) as { query: { top_k: number; inputs: { text: string }; filter?: Record<string, Record<string, unknown>> } }
       const hits = [...estado.registros.values()]
-        .filter(registro => registro.visibleDesde <= ahora && cumpleFiltro(registro, query.filter))
+        .filter(registro => registro.visibleDesde <= ahora && enNamespace(registro, peticion.namespace) && cumpleFiltro(registro, query.filter))
         .map(registro => ({ registro, score: similitud(query.inputs.text, registro.content) }))
         .filter(item => item.score > 0)
         .sort((a, b) => b.score - a.score)
         .slice(0, query.top_k)
         .map(({ registro, score }) => {
-          const { _id, visibleDesde: _visible, ...fields } = registro
+          const { _id, visibleDesde: _visible, __ns: _ns, ...fields } = registro
           return { _id, _score: Number(score.toFixed(4)), fields }
         })
       return responder(200, { result: { hits }, usage: { readUnits: 1, embedTotalTokens: 1 } })

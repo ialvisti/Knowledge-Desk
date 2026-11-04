@@ -111,8 +111,9 @@ describe('HU07 · incorporar un artículo de conocimiento JSON', () => {
   it('rechaza otros formatos, vacíos, JSON inválido, artículos mal formados y más de 50 MB sin guardar nada', async () => {
     const casos: [string, Buffer, number, string][] = [
       ['foto.png', Buffer.from('png'), 415, 'UNSUPPORTED_FORMAT'],
-      ['Politica.pdf', json(VIATICOS_V1), 415, 'UNSUPPORTED_FORMAT'],
-      ['Manual.docx', json(VIATICOS_V1), 415, 'UNSUPPORTED_FORMAT'],
+      // PDF y DOCX son formatos aprobados: con contenido que no es PDF ni DOCX se rechazan como ilegibles.
+      ['Politica.pdf', json(VIATICOS_V1), 422, 'INVALID_DOCUMENT'],
+      ['Manual.docx', json(VIATICOS_V1), 422, 'INVALID_DOCUMENT'],
       ['vacio.json', Buffer.alloc(0), 400, 'EMPTY_FILE'],
       ['malformado.json', Buffer.from('{"metadata": {"article_id": '), 422, 'INVALID_ARTICLE'],
       ['sin_details.json', Buffer.from('{"metadata": {"article_id": "a", "title": "T", "record_keeper": null, "plan_type": null}}'), 422, 'INVALID_ARTICLE'],

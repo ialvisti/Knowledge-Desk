@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import multipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
-import { capacidades, type Config } from './config.ts'
+import { NAMESPACE_COMPARTIDO, capacidades, type Config } from './config.ts'
 import { crearMotorDirecto } from './consulta/directo.ts'
 import { crearMotorForUsGuide } from './consulta/forusguide.ts'
 import { crearMotorLocal } from './consulta/local.ts'
@@ -12,10 +12,11 @@ import type { Motor } from './consulta/motor.ts'
 import { consultar } from './consulta/service.ts'
 import { MAX_PREGUNTA, MIN_PREGUNTA } from './consulta/validate.ts'
 import { GestorDocumentos, type ArchivoRecibido, type Log } from './documents/pipeline.ts'
-import { PATRON_DOCUMENTO, PATRON_VERSION, Registro, type Documento } from './documents/store.ts'
+import { PATRON_DOCUMENTO, PATRON_VERSION, Registro, type Documento, type Version } from './documents/store.ts'
+import { FORMATOS_ADMITIDOS, MAX_TEXTO_CARACTERES, type FormatoDocumento } from './documents/texto.ts'
 import { KdError, cuerpoError } from './errors.ts'
 import { Ejemplos, type Verificador } from './examples.ts'
-import { esArticuloKd, requestId } from './ids.ts'
+import { PREFIJO_KD, esArticuloKd, requestId } from './ids.ts'
 import { crearIndiceLocal, type IndiceLocal } from './index/local.ts'
 import { crearIndicePinecone } from './index/pinecone.ts'
 import type { BuscadorCorpus, IndiceCorpus } from './index/types.ts'
@@ -48,12 +49,20 @@ export async function construirServicios(config: Config, inyecciones: Inyeccione
   const proveedor = config.proveedor ? crearProveedor(config.proveedor, inyecciones.fetchProveedor) : null
   let indice: IndiceCorpus | null = null
   let indiceLocal: IndiceLocal | null = null
-  // Modo directo: solo un buscador sobre el índice compartido, con el adaptador
-  // en solo lectura. El gestor de documentos no recibe índice, así que cargar,
-  // reemplazar o eliminar responden INDEX_NOT_CONFIGURED sin tocar Pinecone.
+  // Modo directo: un buscador de SOLO LECTURA sobre el namespace base compartido
+  // y, para el gestor de documentos, un índice sobre el namespace propio de
+  // Knowledge Desk que se niega a operar sobre el base y solo gestiona IDs "kd_".
   let buscador: BuscadorCorpus | null = null
+  let documentosDirecto: (IndiceCorpus & BuscadorCorpus) | null = null
   if (config.modo === 'directo' && config.pinecone) {
-    buscador = crearIndicePinecone(config.pinecone, { fetchApi: inyecciones.fetchPinecone, maxRetries: inyecciones.pineconeMaxRetries, soloLectura: true })
+    const base = { fetchApi: inyecciones.fetchPinecone, maxRetries: inyecciones.pineconeMaxRetries }
+    buscador = crearIndicePinecone(config.pinecone, { ...base, soloLectura: true })
+    if (config.pinecone.documentosNamespace) {
+      documentosDirecto = crearIndicePinecone({ ...config.pinecone, namespace: config.pinecone.documentosNamespace }, {
+        ...base, escrituraAcotada: { prefijo: PREFIJO_KD, namespacesProtegidos: [config.pinecone.namespace, NAMESPACE_COMPARTIDO] },
+      })
+      indice = documentosDirecto
+    }
   } else if (config.modo === 'forusguide' && config.pinecone) {
     indice = crearIndicePinecone(config.pinecone, { fetchApi: inyecciones.fetchPinecone, maxRetries: inyecciones.pineconeMaxRetries })
   } else if (config.modo === 'local' && proveedor && config.proveedor?.embeddingModel) {
@@ -65,7 +74,10 @@ export async function construirServicios(config: Config, inyecciones: Inyeccione
   if (config.modo === 'forusguide' && config.forusguide) {
     motor = crearMotorForUsGuide(config.forusguide, inyecciones.fetchForUsGuide)
   } else if (config.modo === 'directo' && proveedor && buscador && config.proveedor?.chatModel) {
-    motor = crearMotorDirecto({ proveedor, buscador, umbrales: config.cobertura })
+    motor = crearMotorDirecto({
+      proveedor, buscador, umbrales: config.cobertura,
+      documentos: documentosDirecto ? { buscador: documentosDirecto, noServibles: () => registro.articulosNoServibles(), servible: articulo => registro.articuloServible(articulo) } : null,
+    })
   } else if (config.modo === 'local' && proveedor && indiceLocal && config.proveedor?.chatModel) {
     motor = crearMotorLocal({
       proveedor, indice: indiceLocal, umbrales: config.cobertura, topK: config.localTopK,
@@ -73,17 +85,18 @@ export async function construirServicios(config: Config, inyecciones: Inyeccione
     })
   }
 
-  const gestor = new GestorDocumentos(registro, indice, config, { ahora: inyecciones.ahora, log: inyecciones.log })
+  const gestor = new GestorDocumentos(registro, indice, { ...config, verificarCorpusExterno: config.modo === 'forusguide' }, { ahora: inyecciones.ahora, log: inyecciones.log })
   await gestor.recuperar()
 
   // Un ejemplo solo se muestra si el corpus activo tiene evidencia para él. En
   // Pinecone se excluyen antes del corte las versiones que no pueden sustentar.
   let verificador: Verificador | null = null
-  const busqueda = indice ?? buscador
-  if (busqueda) {
-    const actual = busqueda
+  // En modo directo se busca en el corpus base y en los documentos de Knowledge Desk.
+  const busquedas = [buscador, indice].filter((item): item is BuscadorCorpus | IndiceCorpus => item !== null)
+  if (busquedas.length) {
     verificador = async pregunta => {
-      const hits = await actual.buscar(pregunta, 5, { excluirArticulos: registro.articulosNoServibles(), signal: AbortSignal.timeout(15_000) })
+      const opciones = { excluirArticulos: registro.articulosNoServibles(), signal: AbortSignal.timeout(15_000) }
+      const hits = (await Promise.all(busquedas.map(actual => actual.buscar(pregunta, 5, opciones)))).flat()
       return hits.some(hit => {
         const articulo = String(hit.metadata.article_id ?? '')
         return hit.score >= config.cobertura.minScore && (!esArticuloKd(articulo) || registro.articuloServible(articulo))
@@ -125,6 +138,22 @@ function idDocumento(valor: string): string {
 }
 
 export const RUTA_KNOWLEDGE_QUESTION = '/api/v1/knowledge-question'
+
+// Tipo MIME del original. Un DOCX o un TXT se entregan como descarga o texto;
+// nunca se interpretan como HTML.
+const TIPO_MIME: Record<FormatoDocumento, string> = {
+  json: 'application/json; charset=utf-8',
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  txt: 'text/plain; charset=utf-8',
+}
+
+function versionPedida(doc: Documento, pedida: string | undefined): Version {
+  if (pedida !== undefined && !PATRON_VERSION.test(pedida)) throw new KdError('NOT_FOUND', 'La versión no existe.')
+  const version = doc.versiones.find(item => item.version === (pedida ?? doc.versionActiva ?? doc.versiones[doc.versiones.length - 1].version))
+  if (!version) throw new KdError('NOT_FOUND', 'La versión no existe.')
+  return version
+}
 
 const ARTICULO = /^[A-Za-z0-9_.:-]{1,200}$/
 
@@ -275,7 +304,7 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
       // Solo el destino de búsqueda (sin host ni claves) del modo directo.
       ...(config.modo === 'directo' && config.pinecone ? { busqueda: { destino: `Pinecone · namespace ${config.pinecone.namespace}`, soloLectura: true } } : {}),
       faltan: puede.faltan,
-      limites: { preguntaMin: MIN_PREGUNTA, preguntaMax: MAX_PREGUNTA, archivoMaxBytes: config.maxUploadBytes, formatos: ['json'], esquema: 'kb_article_v2' },
+      limites: { preguntaMin: MIN_PREGUNTA, preguntaMax: MAX_PREGUNTA, archivoMaxBytes: config.maxUploadBytes, formatos: [...FORMATOS_ADMITIDOS], esquema: 'kb_article_v2', textoMaxCaracteres: MAX_TEXTO_CARACTERES },
       // Solo el stack de demostración activa esta marca: la interfaz la muestra
       // para no presentar servicios simulados como reales.
       simulado: config.demoSimulado,
@@ -340,10 +369,7 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
   app.get<{ Params: { id: string }; Querystring: { version?: string } }>('/api/documentos/:id', async request => {
     const doc = registro.documento(idDocumento(request.params.id))
     if (!doc) throw new KdError('NOT_FOUND', 'El documento no existe.')
-    const pedida = request.query.version
-    if (pedida !== undefined && !PATRON_VERSION.test(pedida)) throw new KdError('NOT_FOUND', 'La versión no existe.')
-    const version = doc.versiones.find(item => item.version === (pedida ?? doc.versionActiva ?? doc.versiones[doc.versiones.length - 1].version))
-    if (!version) throw new KdError('NOT_FOUND', 'La versión no existe.')
+    const version = versionPedida(doc, request.query.version)
     const fragmentos = await registro.leerFragmentos(doc.id, version.version)
     const archivoDisponible = existsSync(registro.rutaArchivo(version.archivo.ruta))
     return {
@@ -360,6 +386,8 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
         articulo: version.articulo,
         error: version.error,
         archivoUrl: archivoDisponible ? `/api/documentos/${doc.id}/archivo?version=${version.version}` : null,
+        // PDF, DOCX y TXT: el texto extraído del original, que es lo que se fragmentó.
+        texto: version.texto ? { ...version.texto, url: `/api/documentos/${doc.id}/texto?version=${version.version}` } : null,
       },
       fragmentos: fragmentos.map(item => ({ indice: item.indice, texto: item.texto, tipo: item.tipo, categoria: item.categoria, nivel: item.nivel, rutas: item.rutas, parte: item.parte })),
       versiones: doc.versiones.map(item => ({ version: item.version, estado: item.estado, nombre: item.archivo.nombre, cargadoEn: item.cargadoEn, fragmentos: item.fragmentos })),
@@ -375,15 +403,26 @@ export async function construirApp(servicios: Servicios, opciones: { logger?: bo
     if (!version) throw new KdError('NOT_FOUND', 'El archivo no existe.')
     const ruta = registro.rutaArchivo(version.archivo.ruta)
     if (!existsSync(ruta)) throw new KdError('NOT_FOUND', 'El original ya no está disponible (documento retirado).')
-    // Los bytes exactos que se cargaron, sin reformatear: es el JSON auténtico
-    // de esa versión, verificable con su SHA-256.
-    const descargar = request.query.descargar === '1'
+    // Los bytes exactos que se cargaron, sin reformatear: es el original
+    // auténtico de esa versión, verificable con su SHA-256.
+    const descargar = request.query.descargar === '1' || version.archivo.tipo === 'docx'
     const nombre = encodeURIComponent(version.archivo.nombre)
-    reply.header('content-type', 'application/json; charset=utf-8')
+    reply.header('content-type', TIPO_MIME[version.archivo.tipo ?? 'json'])
     reply.header('x-content-sha256', version.archivo.sha256)
     reply.header('content-disposition', `${descargar ? 'attachment' : 'inline'}; filename*=UTF-8''${nombre}`)
     reply.header('cache-control', 'no-store')
     return reply.send(await readFile(ruta))
+  })
+
+  app.get<{ Params: { id: string }; Querystring: { version?: string } }>('/api/documentos/:id/texto', async (request, reply) => {
+    const doc = registro.documento(idDocumento(request.params.id))
+    if (!doc) throw new KdError('NOT_FOUND', 'El documento no existe.')
+    const version = versionPedida(doc, request.query.version)
+    const texto = version.archivo.tipo === 'json' ? null : await registro.leerTexto(doc.id, version.version)
+    if (texto === null) throw new KdError('NOT_FOUND', 'Esta versión no tiene texto extraído disponible.')
+    reply.header('content-type', 'text/plain; charset=utf-8')
+    reply.header('cache-control', 'no-store')
+    return reply.send(texto)
   })
 
   app.post('/api/documentos', async (request, reply) => {
